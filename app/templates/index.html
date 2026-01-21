@@ -298,6 +298,59 @@
           </div>
         </form>
       </div>
+<div class="card" style="margin-top: 14px;">
+  <h2>予定（給料・定期支払） <span class="pill">M1-2</span></h2>
+
+  <form method="post" action="/plans" class="form">
+    <label>
+      種別
+      <input name="type" placeholder="income or subscription" value="income" required />
+    </label>
+
+    <label>
+      タイトル
+      <input name="title" placeholder="給料 / 家賃 / Netflix" required />
+    </label>
+
+    <label>
+      金額（円）
+      <input name="amount_yen" type="number" min="0" value="0" required />
+    </label>
+
+    <label>
+      口座ID（account_id）
+      <input name="account_id" type="number" min="1" value="1" required />
+    </label>
+
+    <label>
+      頻度（monthly/yearly/monthly_interval）
+      <input name="freq" value="monthly" required />
+    </label>
+
+    <label>
+      日（1-31）
+      <input name="day" type="number" min="1" max="31" value="1" />
+    </label>
+
+    <label>
+      interval（月）
+      <input name="interval_months" type="number" min="1" value="1" />
+    </label>
+
+    <label>
+      month（年1回の月 1-12）
+      <input name="month" type="number" min="1" max="12" value="1" />
+    </label>
+
+    <div class="actions" style="grid-column: 1 / -1;">
+      <button class="btn" type="submit">予定を追加する</button>
+    </div>
+
+    <div class="hint" style="grid-column: 1 / -1;">
+      ※ いったん入力は“素朴”でOK。次のステップでプルダウン化＆口座選択にします。
+    </div>
+  </form>
+</div>
 
       <div class="card">
         <h2>一覧 <span class="pill">登録済み</span></h2>

@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from .models import Subscription
 from .schemas import SubscriptionCreate
 from .models import Account
+from .models import Plan
 
 
 def list_subscriptions(db: Session) -> list[Subscription]:
@@ -35,3 +36,41 @@ def create_account(db, name: str, balance_yen: int):
     db.commit()
     db.refresh(acc)
     return acc
+
+def list_plans(db, user_id: int = 1) -> list[Plan]:
+    return (
+        db.query(Plan)
+        .filter(Plan.user_id == user_id)
+        .order_by(Plan.type, Plan.title, Plan.id)
+        .all()
+    )
+
+def create_plan(
+    db,
+    *,
+    user_id: int,
+    type: str,
+    title: str,
+    amount_yen: int,
+    account_id: int,
+    freq: str,
+    day: int,
+    interval_months: int = 1,
+    month: int = 1,
+) -> Plan:
+    p = Plan(
+        user_id=user_id,
+        type=type,
+        title=title,
+        amount_yen=amount_yen,
+        account_id=account_id,
+        freq=freq,
+        day=day,
+        interval_months=interval_months,
+        month=month,
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+

@@ -58,3 +58,31 @@ def add_account(
 ):
     create_account(db, name=name, balance_yen=balance_yen)
     return RedirectResponse(url="/", status_code=303)
+
+
+# plans登録
+@app.post("/plans")
+def add_plan(
+    type: str = Form(...),            # "income" or "subscription"
+    title: str = Form(...),
+    amount_yen: int = Form(...),
+    account_id: int = Form(...),
+    freq: str = Form(...),            # monthly/yearly/monthly_interval
+    day: int = Form(1),
+    interval_months: int = Form(1),
+    month: int = Form(1),
+    db: Session = Depends(get_db),
+):
+    crud.create_plan(
+        db,
+        user_id=1,
+        type=type,
+        title=title,
+        amount_yen=amount_yen,
+        account_id=account_id,
+        freq=freq,
+        day=day,
+        interval_months=interval_months,
+        month=month,
+    )
+    return RedirectResponse(url="/", status_code=303)
