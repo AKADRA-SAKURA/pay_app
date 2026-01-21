@@ -1,7 +1,8 @@
+from datetime import date
 from sqlalchemy.orm import Session
 from .models import Subscription
 from .schemas import SubscriptionCreate
-from .models import Account
+from .models import CashflowEvent, Account
 from .models import Plan
 
 
@@ -74,3 +75,22 @@ def create_plan(
     db.refresh(p)
     return p
 
+def list_events_between(db, user_id: int, start: date, end: date):
+    return (
+        db.query(CashflowEvent)
+        .filter(CashflowEvent.user_id == user_id,
+                CashflowEvent.date >= start,
+                CashflowEvent.date <= end)
+        .order_by(CashflowEvent.date, CashflowEvent.id)
+        .all()
+    )
+
+def total_start_balance(db, user_id: int = 1) -> int:
+    accounts = db.query(Account).filter(Account.user_id == user_id).all()
+    return sum(int(a.balance_yen) for a in accounts)
+
+def delete_plan(db, plan_id: int, user_id: int = 1) -> None:
+    p = db.query(Plan).filter(Plan.id == plan_id, Plan.user_id == user_id).first()
+    if p:
+        db.delete(p)
+        db.commit()

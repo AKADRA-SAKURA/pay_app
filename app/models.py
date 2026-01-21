@@ -1,4 +1,5 @@
-from sqlalchemy import Integer, String
+from datetime import date
+from sqlalchemy import Integer, String, Date
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -50,3 +51,16 @@ class Plan(Base):
     # yearly のときに使用（1-12）
     month: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
+class CashflowEvent(Base):
+    __tablename__ = "cashflow_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount_yen: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    account_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="expected")

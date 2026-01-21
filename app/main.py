@@ -3,6 +3,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from datetime import date
+import calendar
+from app.services.scheduler import rebuild_events_for_two_months
 
 from .db import Base, engine, get_db
 from .schemas import SubscriptionCreate, SubscriptionOut
@@ -26,6 +29,26 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     accounts = crud.list_accounts(db)
     plans = crud.list_plans(db)
 
+    today = date.today()
+    this_first, this_last = month_range(today)
+
+    # 来月
+    if this_first.month == 12:
+        next_first = date(this_first.year + 1, 1, 1)
+    else:
+        next_first = date(this_first.year, this_first.month + 1, 1)
+    next_first, next_last = month_range(next_first)
+
+    events_this = crud.list_events_between(db, 1, this_first, this_last)
+    events_next = crud.list_events_between(db, 1, next_first, next_last)
+
+    start_balance = crud.total_start_balance(db, 1)
+    this_net = sum(e.amount_yen for e in events_this)
+    next_net = sum(e.amount_yen for e in events_next)
+
+    free_this = start_balance + this_net
+    free_next = start_balance + this_net + next_net
+
     return templates.TemplateResponse(
         "index.html",
         {
@@ -33,6 +56,12 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "subs": subs,
             "accounts": accounts,
             "plans": plans,
+            "events_this": events_this,
+            "events_next": events_next,
+            "free_this": free_this,
+            "free_next": free_next,
+            "this_range": (this_first, this_last),
+            "next_range": (next_first, next_last),
         },
     )
 
@@ -108,4 +137,22 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
     if acc:
         db.delete(acc)
         db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+def month_range(d: date):
+    first = d.replace(day=1)
+    last_day = calendar.monthrange(d.year, d.month)[1]
+    last = d.replace(day=last_day)
+    return first, last
+
+
+@app.post("/events/rebuild")
+def rebuild_events(db: Session = Depends(get_db)):
+    rebuild_events_for_two_months(db, user_id=1, today=date.today())
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/plans/{plan_id}/delete")
+def delete_plan(plan_id: int, db: Session = Depends(get_db)):
+    crud.delete_plan(db, plan_id=plan_id, user_id=1)
     return RedirectResponse(url="/", status_code=303)

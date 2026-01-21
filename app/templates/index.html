@@ -18,7 +18,64 @@
       <span class="badge">LAN: http://{{ request.client.host }}:8000</span>
     </div>
 
+<div class="grid">
+  <div class="card">
+    <h2>今月のイベント</h2>
+    <table>
+      <thead><tr><th>日付</th><th style="width:140px;">金額</th><th>plan_id</th></tr></thead>
+      <tbody>
+        {% for e in events_this %}
+        <tr><td>{{ e.date }}</td><td class="money">{{ "{:,}".format(e.amount_yen) }} 円</td><td>{{ e.plan_id }}</td></tr>
+        {% endfor %}
+        {% if events_this|length == 0 %}
+        <tr><td colspan="3" class="empty">イベントがありません（イベント再生成を押してね）</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>来月のイベント</h2>
+    <table>
+      <thead><tr><th>日付</th><th style="width:140px;">金額</th><th>plan_id</th></tr></thead>
+      <tbody>
+        {% for e in events_next %}
+        <tr><td>{{ e.date }}</td><td class="money">{{ "{:,}".format(e.amount_yen) }} 円</td><td>{{ e.plan_id }}</td></tr>
+        {% endfor %}
+        {% if events_next|length == 0 %}
+        <tr><td colspan="3" class="empty">イベントがありません（イベント再生成を押してね）</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
     <div class="grid">
+<div class="card" style="margin-bottom:14px;">
+  <h2>予測（可処分残額） <span class="pill">M1-4</span></h2>
+
+  <div style="display:flex; gap:12px; flex-wrap:wrap;">
+    <div class="card" style="flex:1; min-width:240px; box-shadow:none;">
+      <div style="color:var(--muted); font-size:12px;">今月（{{ this_range[0] }}〜{{ this_range[1] }}）</div>
+      <div style="font-size:28px; font-weight:800;" class="money">{{ "{:,}".format(free_this) }} 円</div>
+    </div>
+
+    <div class="card" style="flex:1; min-width:240px; box-shadow:none;">
+      <div style="color:var(--muted); font-size:12px;">来月（{{ next_range[0] }}〜{{ next_range[1] }}）</div>
+      <div style="font-size:28px; font-weight:800;" class="money">{{ "{:,}".format(free_next) }} 円</div>
+    </div>
+
+    <div style="display:flex; align-items:end;">
+      <form method="post" action="/events/rebuild" style="margin:0;">
+        <button class="btn" type="submit">イベント再生成</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="hint" style="margin-top:10px;">
+    ※ 予定から今月・来月分のイベントを作り直します。予定を追加したら押してください。
+  </div>
+</div>
 <div class="card">
   <h2>口座 <span class="pill">計算の起点</span></h2>
 
@@ -104,7 +161,10 @@
   <form method="post" action="/plans" class="form">
     <label>
       種別
-      <input name="type" placeholder="income or subscription" value="income" required />
+  <select name="type" required>
+    <option value="income">収入（給料など）</option>
+    <option value="subscription">支出（定期支払）</option>
+  </select>
     </label>
 
     <label>
@@ -169,6 +229,7 @@
         <th style="width:140px;">金額</th>
         <th>頻度</th>
         <th style="width:220px;">スケジュール</th>
+        <th style="width:100px;"></th>
       </tr>
     </thead>
     <tbody>
@@ -190,6 +251,11 @@
             -
           {% endif %}
         </td>
+<td>
+  <form method="post" action="/plans/{{ p.id }}/delete" style="margin:0;">
+    <button class="btn btn-danger" type="submit">削除</button>
+  </form>
+</td>
       </tr>
       {% endfor %}
       {% if plans|length == 0 %}
