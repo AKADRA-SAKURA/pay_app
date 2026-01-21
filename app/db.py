@@ -1,17 +1,21 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-DB_URL = "sqlite:///./app.db"
+load_dotenv()
 
-# SQLiteはスレッド制約があるので check_same_thread=False を付ける
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+DB_URL = os.getenv("DB_URL", "sqlite:///./app.db")
+
+engine = create_engine(
+    DB_URL,
+    connect_args={"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
+)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
-
 class Base(DeclarativeBase):
     pass
-
 
 def get_db():
     db = SessionLocal()

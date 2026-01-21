@@ -1,0 +1,261 @@
+    :root {
+      --bg: #f6f8f7;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: rgba(17, 24, 39, 0.10);
+
+      /* 家計簿アプリっぽい優しいアクセント */
+      --accent: #2fb7a7;        /* mint/teal */
+      --accent-weak: #e7f7f4;   /* very light */
+      --danger: #ef4444;
+      --danger-weak: #fee2e2;
+
+      --radius: 18px;
+      --shadow: 0 10px 30px rgba(17, 24, 39, 0.08);
+      --shadow-soft: 0 6px 16px rgba(17, 24, 39, 0.06);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 10% -10%, #e8f7f4 0%, transparent 60%),
+                  radial-gradient(900px 500px at 90% 0%, #f3f8ff 0%, transparent 55%),
+                  var(--bg);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 18px 40px;
+    }
+
+    .header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0.2px;
+    }
+
+    .sub {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    @media (min-width: 860px) {
+      .grid {
+        grid-template-columns: 1fr 1.2fr;
+        align-items: start;
+      }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      padding: 16px;
+    }
+
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--accent-weak);
+      color: #0f766e;
+      font-size: 12px;
+      border: 1px solid rgba(47, 183, 167, 0.25);
+    }
+
+    .form {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+/* 数値入力は最低限見える幅を確保 */
+input[type="number"] {
+  min-width: 120px;
+}
+
+/* 日付系は少し広め */
+input[name="day"],
+input[name="month"],
+input[name="interval_months"] {
+  min-width: 110px;
+}
+
+    @media (min-width: 520px) {
+      .form {
+        grid-template-columns: 1.2fr 0.9fr 0.9fr;
+      }
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #fbfcfc;
+      color: var(--text);
+      outline: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    }
+
+    input:focus {
+      border-color: rgba(47, 183, 167, 0.55);
+      box-shadow: 0 0 0 4px rgba(47, 183, 167, 0.16);
+      background: #ffffff;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid rgba(47, 183, 167, 0.35);
+      background: linear-gradient(180deg, #38c1b1 0%, #26a89a 100%);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 14px;
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      box-shadow: 0 10px 18px rgba(47, 183, 167, 0.25);
+      transition: transform 120ms ease, filter 120ms ease;
+    }
+
+    .btn:hover { filter: brightness(1.03); transform: translateY(-1px); }
+    .btn:active { transform: translateY(0px); }
+
+    .btn-ghost {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      box-shadow: none;
+    }
+
+    .btn-danger {
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      background: linear-gradient(180deg, #ff6b6b 0%, #ef4444 100%);
+      box-shadow: 0 10px 18px rgba(239, 68, 68, 0.18);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+    }
+
+    thead th {
+      text-align: left;
+      font-size: 12px;
+      color: var(--muted);
+      background: #f9fbfb;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody td {
+      padding: 12px;
+      border-bottom: 1px solid rgba(17, 24, 39, 0.06);
+      vertical-align: middle;
+      background: white;
+    }
+
+    tbody tr:last-child td { border-bottom: none; }
+
+    .money {
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #0f766e;
+      background: var(--accent-weak);
+      border: 1px solid rgba(47, 183, 167, 0.25);
+    }
+
+    .empty {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .footer {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .link {
+      color: #0f766e;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .link:hover { text-decoration: underline; }
+
+    /* スマホ：ボタン押しやすく */
+    @media (max-width: 520px) {
+      .actions { justify-content: stretch; }
+      .btn { width: 100%; }
+    }
