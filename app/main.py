@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from .db import Base, engine, get_db
@@ -14,6 +15,7 @@ from .crud import list_accounts, create_account
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="期限・固定費マネージャ（ローカル）")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -21,7 +23,18 @@ templates = Jinja2Templates(directory="app/templates")
 @app.get("/", response_class=HTMLResponse)
 def page_index(request: Request, db: Session = Depends(get_db)):
     subs = crud.list_subscriptions(db)
-    return templates.TemplateResponse("index.html", {"request": request, "subs": subs})
+    accounts = crud.list_accounts(db)
+    plans = crud.list_plans(db)
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "subs": subs,
+            "accounts": accounts,
+            "plans": plans,
+        },
+    )
 
 
 # API: 一覧（JSON）
@@ -85,4 +98,14 @@ def add_plan(
         interval_months=interval_months,
         month=month,
     )
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/accounts/{account_id}/delete")
+def delete_account(account_id: int, db: Session = Depends(get_db)):
+    # 超簡易：存在したら削除
+    acc = db.query(Account).filter(Account.id == account_id).first()
+    if acc:
+        db.delete(acc)
+        db.commit()
     return RedirectResponse(url="/", status_code=303)
