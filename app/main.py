@@ -7,6 +7,9 @@ from .db import Base, engine, get_db
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
 
+from .models import Account
+from .crud import list_accounts, create_account
+
 # 起動時にテーブル作成（簡易版）
 Base.metadata.create_all(bind=engine)
 
@@ -44,4 +47,14 @@ def create_subscription(
 @app.post("/subscriptions/{sub_id}/delete")
 def delete_subscription(sub_id: int, db: Session = Depends(get_db)):
     crud.delete_subscription(db, sub_id)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/accounts")
+def add_account(
+    name: str = Form(...),
+    balance_yen: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    create_account(db, name=name, balance_yen=balance_yen)
     return RedirectResponse(url="/", status_code=303)

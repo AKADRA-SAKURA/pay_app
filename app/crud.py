@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from .models import Subscription
 from .schemas import SubscriptionCreate
+from .models import Account
 
 
 def list_subscriptions(db: Session) -> list[Subscription]:
@@ -24,3 +25,13 @@ def delete_subscription(db: Session, sub_id: int) -> None:
     if sub:
         db.delete(sub)
         db.commit()
+
+def list_accounts(db):
+    return db.query(Account).order_by(Account.id).all()
+
+def create_account(db, name: str, balance_yen: int):
+    acc = Account(name=name, balance_yen=balance_yen)
+    db.add(acc)
+    db.commit()
+    db.refresh(acc)
+    return acc
