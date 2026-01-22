@@ -1,75 +1,106 @@
-import calendar
+from __future__ import annotations
+
 from datetime import date
+import calendar
 from sqlalchemy.orm import Session
 
 from app.models import Plan, CashflowEvent
 
-def month_index(d: date) -> int:
-    return d.year * 12 + d.month  # 1〜12をそのまま使う（0始まりじゃなくてOK）
 
-def month_range(d: date):
-    first = d.replace(day=1)
-    last_day = calendar.monthrange(d.year, d.month)[1]
-    last = d.replace(day=last_day)
-    return first, last
+def _last_day_of_month(y: int, m: int) -> int:
+    return calendar.monthrange(y, m)[1]
 
-def next_month_first(d: date) -> date:
-    y, m = d.year, d.month
-    if m == 12:
-        return date(y + 1, 1, 1)
-    return date(y, m + 1, 1)
 
-def date_in_month(year: int, month: int, day: int) -> date:
-    last = calendar.monthrange(year, month)[1]
-    return date(year, month, min(day, last))
+def _clamp_day(y: int, m: int, d: int) -> int:
+    return min(d, _last_day_of_month(y, m))
 
-def occurs_monthly_interval(plan_start: date, target_first: date, interval_months: int) -> bool:
-    interval = max(1, int(interval_months))
-    start_num = month_index(plan_start)
-    target_num = month_index(target_first)
-    return (target_num - start_num) % interval == 0
 
-def rebuild_events_for_two_months(db: Session, user_id: int, today: date):
-    this_first, this_last = month_range(today)
-    next_first = next_month_first(this_first)
-    next_first, next_last = month_range(next_first)
+def _month_add(y: int, m: int, add: int) -> tuple[int, int]:
+    # month add (1-12)
+    total = (y * 12 + (m - 1)) + add
+    ny = total // 12
+    nm = (total % 12) + 1
+    return ny, nm
 
-    # 期間内イベントを作り直す（M1の割り切り）
-    db.query(CashflowEvent).filter(
-        CashflowEvent.user_id == user_id,
-        CashflowEvent.date >= this_first,
-        CashflowEvent.date <= next_last,
-    ).delete(synchronize_session=False)
-    db.commit()
 
+def occurs_monthly_interval(start: date, target_month_first: date, interval_months: int) -> bool:
+    """start を基準に interval_months ごとの月が target_month_first(月初)に一致するか"""
+    if interval_months <= 0:
+        interval_months = 1
+    start_index = start.year * 12 + (start.month - 1)
+    target_index = target_month_first.year * 12 + (target_month_first.month - 1)
+    if target_index < start_index:
+        return False
+    return (target_index - start_index) % interval_months == 0
+
+
+def build_month_events(db: Session, user_id: int, month_first: date) -> list[CashflowEvent]:
+    """指定月のイベントを plans から生成して返す（DBにはまだ入れない）"""
     plans = db.query(Plan).filter(Plan.user_id == user_id).all()
+    y, m = month_first.year, month_first.month
 
-    def add_event(p: Plan, d: date):
-        sign = 1 if p.type == "income" else -1
-        db.add(CashflowEvent(
-            user_id=user_id,
-            date=d,
-            amount_yen=sign * int(p.amount_yen),
-            account_id=int(p.account_id),
-            plan_id=int(p.id),
-            status="expected",
-        ))
+    created: list[CashflowEvent] = []
 
     for p in plans:
-        # monthly / monthly_interval
-        if p.freq == "monthly_interval":
-            # 今月
-            if occurs_monthly_interval(p.start_date, this_first, p.interval_months):
-                add_event(p, date_in_month(this_first.year, this_first.month, int(p.day)))
-            # 来月
-            if occurs_monthly_interval(p.start_date, next_first, p.interval_months):
-                add_event(p, date_in_month(next_first.year, next_first.month, int(p.day)))
+        if not p.account_id:
+            # 口座がない plan はイベント生成しない
+            continue
+        # start_date が NULL の古いデータ対策
+        p_start = p.start_date or date.today()
 
-        # yearly
+        should_create = False
+
+        if p.freq == "monthly":
+            should_create = True
         elif p.freq == "yearly":
-            if int(p.month) == this_first.month:
-                add_event(p, date_in_month(this_first.year, this_first.month, int(p.day)))
-            if int(p.month) == next_first.month:
-                add_event(p, date_in_month(next_first.year, next_first.month, int(p.day)))
+            should_create = (p.month == m)
+        elif p.freq == "monthly_interval":
+            should_create = occurs_monthly_interval(p_start, month_first, p.interval_months or 1)
+        else:
+            # 未知freqは無視
+            continue
 
+        if not should_create:
+            continue
+
+        d = _clamp_day(y, m, p.day or 1)
+        ev_date = date(y, m, d)
+
+        # amount: incomeは+、subscription(支出)は-
+        amount = int(p.amount_yen or 0)
+        if p.type != "income":
+            amount = -abs(amount)
+        else:
+            amount = abs(amount)
+
+        created.append(
+            CashflowEvent(
+                user_id=user_id,
+                plan_id=p.id,
+                account_id=p.account_id,   # ← これを追加！
+                date=ev_date,
+                amount_yen=amount,
+                status="expected",         # statusがNOT NULLならこれも入れる（モデル次第）
+            )
+        )
+
+    return created
+
+
+def rebuild_events(db: Session, user_id: int) -> None:
+    """今月＋来月のイベントを作り直す（イベントだけを消して作る）"""
+    today = date.today()
+    this_first = today.replace(day=1)
+    next_y, next_m = _month_add(this_first.year, this_first.month, 1)
+    next_first = date(next_y, next_m, 1)
+
+    # いったんイベントを全部消す（ユーザー単位）
+    db.query(CashflowEvent).filter(CashflowEvent.user_id == user_id).delete(synchronize_session=False)
+
+    # 作って入れる
+    events = []
+    events += build_month_events(db, user_id, this_first)
+    events += build_month_events(db, user_id, next_first)
+
+    db.add_all(events)
     db.commit()

@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Depends, Request, Form
+from fastapi import FastAPI, Depends, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from datetime import date
+from datetime import date, datetime
 import calendar
-from app.services.scheduler import rebuild_events_for_two_months
+from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 
 from .db import Base, engine, get_db
 from .schemas import SubscriptionCreate, SubscriptionOut
@@ -151,6 +151,9 @@ def add_plan(
     month: int = Form(1),
     db: Session = Depends(get_db),
 ):
+    if not account_id:
+        raise HTTPException(status_code=400, detail="account_id is required")
+
     if start_date:
         sd = datetime.strptime(start_date, "%Y-%m-%d").date()
     else:
@@ -190,7 +193,7 @@ def month_range(d: date):
 
 @app.post("/events/rebuild")
 def rebuild_events(db: Session = Depends(get_db)):
-    rebuild_events_for_two_months(db, user_id=1, today=date.today())
+    rebuild_events_scheduler(db, user_id=1)
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/plans/{plan_id}/delete")

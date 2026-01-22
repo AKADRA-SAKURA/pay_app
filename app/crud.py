@@ -47,17 +47,17 @@ def list_plans(db, user_id: int = 1) -> list[Plan]:
 
 def create_plan(
     db,
-    *,
-    user_id: int,
-    type: str,
-    title: str,
-    amount_yen: int,
-    account_id: int,
-    freq: str,
-    day: int,
-    interval_months: int = 1,
-    month: int = 1,
-) -> Plan:
+    type,
+    title,
+    amount_yen,
+    account_id,
+    freq,
+    day,
+    interval_months,
+    month,
+    start_date=None,
+    user_id=1,
+):
     p = Plan(
         user_id=user_id,
         type=type,
@@ -68,6 +68,7 @@ def create_plan(
         day=day,
         interval_months=interval_months,
         month=month,
+        start_date=start_date,
     )
     db.add(p)
     db.commit()

@@ -1,6 +1,6 @@
 from datetime import date
-from sqlalchemy import Integer, String, Date
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Integer, String, Date, Column, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 
@@ -54,6 +54,8 @@ class Plan(Base):
     # 開始日
     start_date = mapped_column(Date, nullable=True, default=date.today)
 
+    events = relationship("CashflowEvent", back_populates="plan", cascade="all, delete-orphan")
+
 class CashflowEvent(Base):
     __tablename__ = "cashflow_events"
 
@@ -64,6 +66,8 @@ class CashflowEvent(Base):
     amount_yen: Mapped[int] = mapped_column(Integer, nullable=False)
 
     account_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    plan_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_id = Column(Integer, ForeignKey("plans.id"), nullable=False)
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="expected")
+
+    plan = relationship("Plan", back_populates="events")
