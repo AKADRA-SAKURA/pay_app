@@ -28,15 +28,15 @@
               <tr>
                 <th>日付</th>
                 <th style="width: 140px">金額</th>
-                <th>plan_id</th>
+                <th>予定</th>
               </tr>
             </thead>
             <tbody>
               {% for e in events_this %}
               <tr>
-                <td>{{ e.date }}</td>
-                <td class="money">{{ "{:,}".format(e.amount_yen) }} 円</td>
-                <td>{{ e.plan_id }}</td>
+                  <td>{{ e["date"] }}</td>
+                  <td class="money">{{ "{:,}".format(e["amount_yen"]) }} 円</td>
+                  <td>{{ e["plan_title"] }}</td>
               </tr>
               {% endfor %} {% if events_this|length == 0 %}
               <tr>
@@ -56,15 +56,15 @@
               <tr>
                 <th>日付</th>
                 <th style="width: 140px">金額</th>
-                <th>plan_id</th>
+                <th>予定</th>
               </tr>
             </thead>
             <tbody>
               {% for e in events_next %}
               <tr>
-                <td>{{ e.date }}</td>
-                <td class="money">{{ "{:,}".format(e.amount_yen) }} 円</td>
-                <td>{{ e.plan_id }}</td>
+                  <td>{{ e["date"] }}</td>
+                  <td class="money">{{ "{:,}".format(e["amount_yen"]) }} 円</td>
+                  <td>{{ e["plan_title"] }}</td>
               </tr>
               {% endfor %} {% if events_next|length == 0 %}
               <tr>
@@ -301,23 +301,15 @@
               <input name="month" type="number" min="1" max="12" value="1" />
             </label>
 
-            <div class="actions" style="grid-column: 1 / -1">
-              <button
-                class="btn"
-                type="submit"
-                {%
-                if
-                accounts|length=""
-                ="0"
-                %}disabled
-                style="opacity: 0.5; cursor: not-allowed"
-                {%
-                endif
-                %}
-              >
-                予定を追加する
-              </button>
-            </div>
+<div class="actions" style="grid-column: 1 / -1">
+  {% if not accounts %}
+  <button class="btn" type="submit" disabled style="opacity: 0.5; cursor: not-allowed">
+    予定を追加する
+  </button>
+  {% else %}
+  <button class="btn" type="submit">予定を追加する</button>
+  {% endif %}
+</div>
 
             <div class="hint" style="grid-column: 1 / -1">
               ※

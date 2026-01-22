@@ -2,9 +2,8 @@ from datetime import date
 from sqlalchemy.orm import Session
 from .models import Subscription
 from .schemas import SubscriptionCreate
-from .models import CashflowEvent, Account
-from .models import Plan
-
+from .models import CashflowEvent, Account, Plan
+from sqlalchemy import and_
 
 def list_subscriptions(db: Session) -> list[Subscription]:
     return db.query(Subscription).order_by(Subscription.billing_day, Subscription.id).all()
@@ -94,3 +93,31 @@ def delete_plan(db, plan_id: int, user_id: int = 1) -> None:
     if p:
         db.delete(p)
         db.commit()
+
+def list_events_between_with_plan(db: Session, user_id: int, start, end):
+    rows = (
+        db.query(CashflowEvent, Plan)
+        .join(Plan, CashflowEvent.plan_id == Plan.id)
+        .filter(
+            CashflowEvent.user_id == user_id,
+            CashflowEvent.date >= start,
+            CashflowEvent.date <= end,
+        )
+        .order_by(CashflowEvent.date, CashflowEvent.id)
+        .all()
+    )
+
+    # テンプレで扱いやすいよう dict に整形
+    out = []
+    for e, p in rows:
+        out.append(
+            {
+                "date": e.date,
+                "amount_yen": e.amount_yen,
+                "plan_title": p.title,
+                "plan_type": p.type,
+                "account_id": e.account_id,
+            }
+        )
+    return out
+

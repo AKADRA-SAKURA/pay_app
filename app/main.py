@@ -39,12 +39,12 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         next_first = date(this_first.year, this_first.month + 1, 1)
     next_first, next_last = month_range(next_first)
 
-    events_this = crud.list_events_between(db, 1, this_first, this_last)
-    events_next = crud.list_events_between(db, 1, next_first, next_last)
+    events_this = crud.list_events_between_with_plan(db, 1, this_first, this_last)
+    events_next = crud.list_events_between_with_plan(db, 1, next_first, next_last)
 
     start_balance = crud.total_start_balance(db, 1)
-    this_net = sum(e.amount_yen for e in events_this)
-    next_net = sum(e.amount_yen for e in events_next)
+    this_net = sum(e["amount_yen"] for e in events_this)
+    next_net = sum(e["amount_yen"] for e in events_next)
 
     free_this = start_balance + this_net
     free_next = start_balance + this_net + next_net
