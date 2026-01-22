@@ -299,6 +299,15 @@
               <input name="interval_months" type="number" min="1" value="1" />
             </label>
 
+<label>
+  開始日（intervalの基準）
+  <input name="start_date" type="date" />
+</label>
+
+<div class="hint" style="grid-column: 1 / -1">
+  ※ monthly_interval の場合、この開始日を基準に「nヶ月ごと」を判定します（未入力なら今日）。
+</div>
+
             <label>
               month（年1回の月 1-12）
               <input name="month" type="number" min="1" max="12" value="1" />
@@ -330,6 +339,7 @@
                   <th>タイトル</th>
                   <th style="width: 140px">金額</th>
                   <th>頻度</th>
+                  <th style="width: 130px">開始日</th>
                   <th style="width: 220px">スケジュール</th>
                   <th style="width: 100px"></th>
                 </tr>
@@ -342,6 +352,7 @@
                   <td style="font-weight: 650">{{ p.title }}</td>
                   <td class="money">{{ "{:,}".format(p.amount_yen) }} 円</td>
                   <td>{{ p.freq }}</td>
+                  <td>{{ p.start_date or "-" }}</td>
                   <td>
                     {% if p.freq == "monthly" %}
                       毎月 {{ p.day }} 日
@@ -363,7 +374,7 @@
 
                 {% if not plans %}
                 <tr>
-                  <td colspan="7" class="empty">
+                  <td colspan="8" class="empty">
                     まだ予定がありません（給料・サブスクを追加してみてね）
                   </td>
                 </tr>

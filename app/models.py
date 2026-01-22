@@ -51,6 +51,9 @@ class Plan(Base):
     # yearly のときに使用（1-12）
     month: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
+    # 開始日
+    start_date = mapped_column(Date, nullable=True, default=date.today)
+
 class CashflowEvent(Base):
     __tablename__ = "cashflow_events"
 

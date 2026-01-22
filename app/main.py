@@ -147,9 +147,14 @@ def add_plan(
     freq: str = Form(...),            # monthly/yearly/monthly_interval
     day: int = Form(1),
     interval_months: int = Form(1),
+    start_date: str | None = Form(default=None),
     month: int = Form(1),
     db: Session = Depends(get_db),
 ):
+    if start_date:
+        sd = datetime.strptime(start_date, "%Y-%m-%d").date()
+    else:
+        sd = date.today()
     crud.create_plan(
         db,
         user_id=1,
@@ -160,6 +165,7 @@ def add_plan(
         freq=freq,
         day=day,
         interval_months=interval_months,
+        start_date=sd,
         month=month,
     )
     return RedirectResponse(url="/", status_code=303)
