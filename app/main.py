@@ -41,6 +41,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
 
     events_this = crud.list_events_between_with_plan(db, 1, this_first, this_last)
     events_next = crud.list_events_between_with_plan(db, 1, next_first, next_last)
+    from collections import defaultdict
 
     start_balance = crud.total_start_balance(db, 1)
     this_net = sum(e["amount_yen"] for e in events_this)
@@ -48,6 +49,39 @@ def page_index(request: Request, db: Session = Depends(get_db)):
 
     free_this = start_balance + this_net
     free_next = start_balance + this_net + next_net
+
+    # --- 口座別集計（M1-6） ---
+    # events_* は dict の配列（e["account_id"], e["amount_yen"] がある前提）
+    this_by_acc = defaultdict(int)
+    next_by_acc = defaultdict(int)
+
+    for e in events_this:
+        this_by_acc[int(e["account_id"])] += int(e["amount_yen"])
+
+    for e in events_next:
+        next_by_acc[int(e["account_id"])] += int(e["amount_yen"])
+
+    account_summaries = []
+    for a in accounts:
+        acc_id = int(a.id)
+        start = int(a.balance_yen)
+        this_net_acc = this_by_acc[acc_id]
+        next_net_acc = next_by_acc[acc_id]
+
+        account_summaries.append(
+            {
+                "id": acc_id,
+                "name": a.name,
+                "start": start,
+                "this_net": this_net_acc,
+                "next_net": next_net_acc,
+                "free_this": start + this_net_acc,
+                "free_next": start + this_net_acc + next_net_acc,
+            }
+        )
+
+    # 表示を安定させる（口座名順など）
+    account_summaries.sort(key=lambda x: x["id"])
 
     return templates.TemplateResponse(
         "index.html",
@@ -62,6 +96,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "free_next": free_next,
             "this_range": (this_first, this_last),
             "next_range": (next_first, next_last),
+            "account_summaries": account_summaries,
         },
     )
 

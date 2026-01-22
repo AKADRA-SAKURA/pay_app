@@ -117,46 +117,6 @@
             ※ 予定から今月・来月分のイベントを作り直します。予定を追加したら押してください。
           </div>
         </div>
-<div class="card" style="margin-top: 14px">
-  <h2>口座別の予測 <span class="pill">M1-6</span></h2>
-
-  <table>
-    <thead>
-      <tr>
-        <th style="width: 70px">ID</th>
-        <th>口座</th>
-        <th style="width: 140px">現在残高</th>
-        <th style="width: 140px">今月増減</th>
-        <th style="width: 160px">今月残額予測</th>
-        <th style="width: 140px">来月増減</th>
-        <th style="width: 160px">来月残額予測</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in account_summaries %}
-      <tr>
-        <td>{{ s["id"] }}</td>
-        <td style="font-weight: 650">{{ s["name"] }}</td>
-        <td class="money">{{ "{:,}".format(s["start"]) }} 円</td>
-        <td class="money">{{ "{:,}".format(s["this_net"]) }} 円</td>
-        <td class="money">{{ "{:,}".format(s["free_this"]) }} 円</td>
-        <td class="money">{{ "{:,}".format(s["next_net"]) }} 円</td>
-        <td class="money">{{ "{:,}".format(s["free_next"]) }} 円</td>
-      </tr>
-      {% endfor %}
-
-      {% if not account_summaries %}
-      <tr>
-        <td colspan="7" class="empty">口座がありません（先に口座を作ってね）</td>
-      </tr>
-      {% endif %}
-    </tbody>
-  </table>
-
-  <div class="hint" style="margin-top: 10px">
-    ※ 予定（plan）の口座を正しく選ぶと、口座別の残額予測が合います。
-  </div>
-</div>
 
 
         <!-- 口座 -->
