@@ -158,6 +158,40 @@
   </div>
 </div>
 
+<h2>口座別 残高推移（イベント時点）</h2>
+
+{% for acc in forecast["accounts"] %}
+  <h3>{{ acc["name"] }}（開始: {{ acc["start_balance_yen"] }}円）</h3>
+
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+      <tr>
+        <th>日付</th>
+        <th>増減</th>
+        <th>残高</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in acc["series"] %}
+        <tr>
+          <td>{{ p["date"] }}</td>
+          <td>
+            {% if p["delta_yen"] >= 0 %}+{% endif %}{{ p["delta_yen"] }}
+          </td>
+          <td>{{ p["balance_yen"] }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if acc["series"]|length > 0 %}
+    {% set last = acc["series"][-1] %}
+    <p>予測最終残高（{{ last["date"] }}時点）: <strong>{{ last["balance_yen"] }}円</strong></p>
+  {% endif %}
+{% endfor %}
+
+
+
 
         <!-- 口座 -->
         <div class="card">

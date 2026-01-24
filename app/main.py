@@ -13,6 +13,7 @@ from . import crud
 
 from .models import Account
 from .crud import list_accounts, create_account
+from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
 
 # 起動時にテーブル作成（簡易版）
 Base.metadata.create_all(bind=engine)
@@ -83,6 +84,8 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     # 表示を安定させる（口座名順など）
     account_summaries.sort(key=lambda x: x["id"])
 
+    forecast = forecast_by_account_daily(db, user_id=1, start=this_first, end=next_last)
+
     return templates.TemplateResponse(
         "index.html",
         {
@@ -97,6 +100,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "this_range": (this_first, this_last),
             "next_range": (next_first, next_last),
             "account_summaries": account_summaries,
+            "forecast": forecast,
         },
     )
 
@@ -200,3 +204,17 @@ def rebuild_events(db: Session = Depends(get_db)):
 def delete_plan(plan_id: int, db: Session = Depends(get_db)):
     crud.delete_plan(db, plan_id=plan_id, user_id=1)
     return RedirectResponse(url="/", status_code=303)
+
+@app.get("/api/forecast/accounts")
+def api_forecast_accounts(db: Session = Depends(get_db)):
+    today = date.today()
+
+    # 今月初〜来月末（既存画面の発想と同じ）
+    this_first, this_last = month_range(today)
+    if this_first.month == 12:
+        next_first = date(this_first.year + 1, 1, 1)
+    else:
+        next_first = date(this_first.year, this_first.month + 1, 1)
+    next_first, next_last = month_range(next_first)
+
+    return forecast_by_account_events(db, user_id=1, start=this_first, end=next_last)
