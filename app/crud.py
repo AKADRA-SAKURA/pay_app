@@ -1,8 +1,9 @@
+from datetime import date
 from sqlalchemy.orm import Session
 from .models import Subscription
 from .schemas import SubscriptionCreate
-from .models import Account
-
+from .models import CashflowEvent, Account, Plan
+from sqlalchemy import and_
 
 def list_subscriptions(db: Session) -> list[Subscription]:
     return db.query(Subscription).order_by(Subscription.billing_day, Subscription.id).all()
@@ -35,3 +36,89 @@ def create_account(db, name: str, balance_yen: int):
     db.commit()
     db.refresh(acc)
     return acc
+
+def list_plans(db, user_id: int = 1) -> list[Plan]:
+    return (
+        db.query(Plan)
+        .filter(Plan.user_id == user_id)
+        .order_by(Plan.type, Plan.title, Plan.id)
+        .all()
+    )
+
+def create_plan(
+    db,
+    type,
+    title,
+    amount_yen,
+    account_id,
+    freq,
+    day,
+    interval_months,
+    month,
+    start_date=None,
+    user_id=1,
+):
+    p = Plan(
+        user_id=user_id,
+        type=type,
+        title=title,
+        amount_yen=amount_yen,
+        account_id=account_id,
+        freq=freq,
+        day=day,
+        interval_months=interval_months,
+        month=month,
+        start_date=start_date,
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+def list_events_between(db, user_id: int, start: date, end: date):
+    return (
+        db.query(CashflowEvent)
+        .filter(CashflowEvent.user_id == user_id,
+                CashflowEvent.date >= start,
+                CashflowEvent.date <= end)
+        .order_by(CashflowEvent.date, CashflowEvent.id)
+        .all()
+    )
+
+def total_start_balance(db, user_id: int = 1) -> int:
+    accounts = db.query(Account).filter(Account.user_id == user_id).all()
+    return sum(int(a.balance_yen) for a in accounts)
+
+def delete_plan(db, plan_id: int, user_id: int = 1) -> None:
+    p = db.query(Plan).filter(Plan.id == plan_id, Plan.user_id == user_id).first()
+    if p:
+        db.delete(p)
+        db.commit()
+
+def list_events_between_with_plan(db: Session, user_id: int, start, end):
+    rows = (
+        db.query(CashflowEvent, Plan)
+        .join(Plan, CashflowEvent.plan_id == Plan.id)
+        .filter(
+            CashflowEvent.user_id == user_id,
+            CashflowEvent.date >= start,
+            CashflowEvent.date <= end,
+        )
+        .order_by(CashflowEvent.date, CashflowEvent.id)
+        .all()
+    )
+
+    # テンプレで扱いやすいよう dict に整形
+    out = []
+    for e, p in rows:
+        out.append(
+            {
+                "date": e.date,
+                "amount_yen": e.amount_yen,
+                "plan_title": p.title,
+                "plan_type": p.type,
+                "account_id": e.account_id,
+            }
+        )
+    return out
+

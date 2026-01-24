@@ -117,80 +117,6 @@
             ※ 予定から今月・来月分のイベントを作り直します。予定を追加したら押してください。
           </div>
         </div>
-<div class="card" style="margin-top: 14px">
-  <h2>口座別の予測 <span class="pill">M1-6</span></h2>
-
-  <table>
-    <thead>
-      <tr>
-        <th style="width: 70px">ID</th>
-        <th>口座</th>
-        <th style="width: 140px">現在残高</th>
-        <th style="width: 140px">今月増減</th>
-        <th style="width: 160px">今月残額予測</th>
-        <th style="width: 140px">来月増減</th>
-        <th style="width: 160px">来月残額予測</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in account_summaries %}
-      <tr>
-        <td>{{ s["id"] }}</td>
-        <td style="font-weight: 650">{{ s["name"] }}</td>
-        <td class="money">{{ "{:,}".format(s["start"]) }} 円</td>
-        <td class="money">{{ "{:,}".format(s["this_net"]) }} 円</td>
-        <td class="money">{{ "{:,}".format(s["free_this"]) }} 円</td>
-        <td class="money">{{ "{:,}".format(s["next_net"]) }} 円</td>
-        <td class="money">{{ "{:,}".format(s["free_next"]) }} 円</td>
-      </tr>
-      {% endfor %}
-
-      {% if not account_summaries %}
-      <tr>
-        <td colspan="7" class="empty">口座がありません（先に口座を作ってね）</td>
-      </tr>
-      {% endif %}
-    </tbody>
-  </table>
-
-  <div class="hint" style="margin-top: 10px">
-    ※ 予定（plan）の口座を正しく選ぶと、口座別の残額予測が合います。
-  </div>
-</div>
-
-<h2>口座別 残高推移（イベント時点）</h2>
-
-{% for acc in forecast["accounts"] %}
-  <h3>{{ acc["name"] }}（開始: {{ acc["start_balance_yen"] }}円）</h3>
-
-  <table border="1" cellpadding="6" cellspacing="0">
-    <thead>
-      <tr>
-        <th>日付</th>
-        <th>増減</th>
-        <th>残高</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in acc["series"] %}
-        <tr>
-          <td>{{ p["date"] }}</td>
-          <td>
-            {% if p["delta_yen"] >= 0 %}+{% endif %}{{ p["delta_yen"] }}
-          </td>
-          <td>{{ p["balance_yen"] }}</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  {% if acc["series"]|length > 0 %}
-    {% set last = acc["series"][-1] %}
-    <p>予測最終残高（{{ last["date"] }}時点）: <strong>{{ last["balance_yen"] }}円</strong></p>
-  {% endif %}
-{% endfor %}
-
-
 
 
         <!-- 口座 -->
@@ -333,15 +259,6 @@
               <input name="interval_months" type="number" min="1" value="1" />
             </label>
 
-<label>
-  開始日（intervalの基準）
-  <input name="start_date" type="date" />
-</label>
-
-<div class="hint" style="grid-column: 1 / -1">
-  ※ monthly_interval の場合、この開始日を基準に「nヶ月ごと」を判定します（未入力なら今日）。
-</div>
-
             <label>
               month（年1回の月 1-12）
               <input name="month" type="number" min="1" max="12" value="1" />
@@ -373,7 +290,6 @@
                   <th>タイトル</th>
                   <th style="width: 140px">金額</th>
                   <th>頻度</th>
-                  <th style="width: 130px">開始日</th>
                   <th style="width: 220px">スケジュール</th>
                   <th style="width: 100px"></th>
                 </tr>
@@ -386,7 +302,6 @@
                   <td style="font-weight: 650">{{ p.title }}</td>
                   <td class="money">{{ "{:,}".format(p.amount_yen) }} 円</td>
                   <td>{{ p.freq }}</td>
-                  <td>{{ p.start_date or "-" }}</td>
                   <td>
                     {% if p.freq == "monthly" %}
                       毎月 {{ p.day }} 日
@@ -408,7 +323,7 @@
 
                 {% if not plans %}
                 <tr>
-                  <td colspan="8" class="empty">
+                  <td colspan="7" class="empty">
                     まだ予定がありません（給料・サブスクを追加してみてね）
                   </td>
                 </tr>

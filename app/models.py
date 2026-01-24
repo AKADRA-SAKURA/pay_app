@@ -1,5 +1,6 @@
-from sqlalchemy import Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
+from datetime import date
+from sqlalchemy import Integer, String, Date, Column, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 
@@ -22,3 +23,51 @@ class Account(Base):
 
     # 将来 multi-user 用（今は1ユーザー想定でも入れておく）
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+class Plan(Base):
+    __tablename__ = "plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # income / subscription （M1ではこの2つだけ）
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    amount_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # どの口座に紐づくか（入金口座 or 引落口座）
+    account_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # monthly / yearly / monthly_interval
+    freq: Mapped[str] = mapped_column(String(30), nullable=False, default="monthly")
+
+    # 毎月の何日（1-31）
+    day: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # monthly_interval のときに使用（例：2ヶ月に1回）
+    interval_months: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # yearly のときに使用（1-12）
+    month: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # 開始日
+    start_date = mapped_column(Date, nullable=True, default=date.today)
+
+    events = relationship("CashflowEvent", back_populates="plan", cascade="all, delete-orphan")
+
+class CashflowEvent(Base):
+    __tablename__ = "cashflow_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount_yen: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    account_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_id = Column(Integer, ForeignKey("plans.id"), nullable=False)
+
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="expected")
+
+    plan = relationship("Plan", back_populates="events")
