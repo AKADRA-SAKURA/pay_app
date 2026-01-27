@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Request, Form, HTTPException
+from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -206,7 +206,10 @@ def delete_plan(plan_id: int, db: Session = Depends(get_db)):
     return RedirectResponse(url="/", status_code=303)
 
 @app.get("/api/forecast/accounts")
-def api_forecast_accounts(db: Session = Depends(get_db)):
+def api_forecast_accounts(
+    danger_threshold_yen: int = Query(0),
+    db: Session = Depends(get_db),
+):
     today = date.today()
 
     # 今月初〜来月末（既存画面の発想と同じ）
@@ -217,4 +220,6 @@ def api_forecast_accounts(db: Session = Depends(get_db)):
         next_first = date(this_first.year, this_first.month + 1, 1)
     next_first, next_last = month_range(next_first)
 
-    return forecast_by_account_events(db, user_id=1, start=this_first, end=next_last)
+    return forecast_by_account_events(
+        db, user_id=1, start=this_first, end=next_last, danger_threshold_yen=danger_threshold_yen
+    )

@@ -84,11 +84,11 @@
 
       <div class="grid">
         <!-- 可処分残額 -->
-        <div class="card" style="margin-bottom: 14px">
+        <div class="card mb-14">
           <h2>予測（可処分残額） <span class="pill">M1-4</span></h2>
 
-          <div style="display: flex; gap: 12px; flex-wrap: wrap">
-            <div class="card" style="flex: 1; min-width: 240px; box-shadow: none">
+          <div class="flex gap-12 flex-wrap">
+            <div class="card no-shadow" style="flex:1; min-width:240px;">
               <div style="color: var(--muted); font-size: 12px">
                 今月（{{ this_range[0] }}〜{{ this_range[1] }}）
               </div>
@@ -97,7 +97,7 @@
               </div>
             </div>
 
-            <div class="card" style="flex: 1; min-width: 240px; box-shadow: none">
+            <div class="card no-shadow" style="flex:1; min-width:240px;">
               <div style="color: var(--muted); font-size: 12px">
                 来月（{{ next_range[0] }}〜{{ next_range[1] }}）
               </div>
@@ -106,14 +106,14 @@
               </div>
             </div>
 
-            <div style="display: flex; align-items: end">
+            <div class="flex items-end">
               <form method="post" action="/events/rebuild" style="margin: 0">
                 <button class="btn" type="submit">イベント再生成</button>
               </form>
             </div>
           </div>
 
-          <div class="hint" style="margin-top: 10px">
+          <div class="hint mt-10">
             ※ 予定から今月・来月分のイベントを作り直します。予定を追加したら押してください。
           </div>
         </div>
@@ -135,7 +135,7 @@
               <input name="balance_yen" type="number" min="0" value="0" required />
             </label>
 
-            <div class="actions" style="grid-column: 1 / -1">
+            <div class="actions col-span-all">
               <button class="btn" type="submit">口座を追加する</button>
             </div>
           </form>
@@ -196,7 +196,7 @@
               <input name="billing_day" type="number" min="1" max="31" value="1" required />
             </label>
 
-            <div class="actions" style="grid-column: 1 / -1">
+            <div class="actions col-span-all">
               <button class="btn" type="submit">追加する</button>
               <button class="btn btn-ghost" type="reset">クリア</button>
             </div>
@@ -208,7 +208,7 @@
         </div>
 
         <!-- 予定（給料・定期支払） -->
-        <div class="card" style="margin-top: 14px">
+        <div class="card mt-14">
           <h2>予定（給料・定期支払） <span class="pill">M1-2</span></h2>
 
           {% if not accounts %}
@@ -265,7 +265,7 @@
               <input name="month" type="number" min="1" max="12" value="1" />
             </label>
 
-            <div class="actions" style="grid-column: 1 / -1">
+            <div class="actions col-span-all">
               {% if not accounts %}
               <button class="btn" type="submit" disabled style="opacity: 0.5; cursor: not-allowed">
                 予定を追加する
@@ -280,7 +280,7 @@
             </div>
           </form>
 
-          <div class="card" style="margin-top: 14px">
+          <div class="card mt-14">
             <h2>予定一覧 <span class="pill">給料・定期支払</span></h2>
 
             <table>
