@@ -18,6 +18,34 @@
       <input name="billing_day" type="number" min="1" max="31" value="1" required />
     </label>
 
+    <label>
+    支払い方法
+    <select name="payment_method" required>
+        <option value="bank">口座引落</option>
+        <option value="card">カード</option>
+    </select>
+    </label>
+
+    <label>
+    引落口座（bankのとき）
+    <select name="account_id">
+        <option value="">-</option>
+        {% for a in accounts %}
+        <option value="{{ a.id }}">{{ a.name }}（ID:{{ a.id }}）</option>
+        {% endfor %}
+    </select>
+    </label>
+
+    <label>
+    カード（cardのとき）
+    <select name="card_id">
+        <option value="">-</option>
+        {% for c in cards %}
+        <option value="{{ c.id }}">{{ c.name }}（ID:{{ c.id }}）</option>
+        {% endfor %}
+    </select>
+    </label>
+
     <div class="actions col-span-all">
       <button class="btn" type="submit">追加する</button>
       <button class="btn btn-ghost" type="reset">クリア</button>

@@ -1,0 +1,80 @@
+<div class="card">
+  <h2>カード決済入力 <span class="pill">フェーズ1</span></h2>
+
+  {% if not cards %}
+    <div class="hint">※ 先に「カード管理」でカードを作ってね。</div>
+  {% endif %}
+
+  <form method="post" action="/card-transactions" class="form">
+    <label class="col-span-all">
+      日付
+      <input name="date" type="date" required />
+    </label>
+
+    <label class="col-span-all">
+      店名（任意）
+      <input name="merchant" placeholder="スーパー / Amazon" />
+    </label>
+
+    <label>
+      金額（円）
+      <input name="amount_yen" type="number" min="0" value="0" required />
+    </label>
+
+    <label>
+      カード
+      <select name="card_id" required>
+        {% for c in cards %}
+          <option value="{{ c.id }}">{{ c.name }}（ID:{{ c.id }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="actions col-span-all">
+      {% if not cards %}
+        <button class="btn" type="submit" disabled style="opacity:.5;cursor:not-allowed;">追加</button>
+      {% else %}
+        <button class="btn" type="submit">追加</button>
+      {% endif %}
+    </div>
+  </form>
+
+  <div class="mt-14">
+    <h2>決済一覧 <span class="pill">最新</span></h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px;">ID</th>
+            <th style="width:140px;">日付</th>
+            <th>店名</th>
+            <th style="width:160px;">金額</th>
+            <th style="width:200px;">カード</th>
+            <th style="width:100px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in card_transactions %}
+          <tr>
+            <td>{{ t.id }}</td>
+            <td>{{ t.date }}</td>
+            <td>{{ t.merchant or "-" }}</td>
+            <td class="money">{{ "{:,}".format(t.amount_yen) }} 円</td>
+            <td>{{ t.card.name }}</td>
+            <td>
+              <form method="post" action="/card-transactions/{{ t.id }}/delete" style="margin:0">
+                <button class="btn btn-danger" type="submit">削除</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+
+          {% if not card_transactions %}
+          <tr><td colspan="6" class="empty">まだ決済がありません</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

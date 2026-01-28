@@ -2,16 +2,16 @@ from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import date, datetime
 import calendar
 from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 
-from .db import Base, engine, get_db
+from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
 
-from .models import Account
+from .models import Account, Card, CardTransaction
 from .crud import list_accounts, create_account
 from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
 
@@ -86,6 +86,17 @@ def page_index(request: Request, db: Session = Depends(get_db)):
 
     forecast = forecast_by_account_daily(db, user_id=1, start=this_first, end=next_last)
 
+    # --- カード（フェーズ1）---
+    cards = db.query(Card).order_by(Card.id.asc()).all()
+
+    card_transactions = (
+        db.query(CardTransaction)
+        .options(joinedload(CardTransaction.card))
+        .order_by(CardTransaction.date.desc(), CardTransaction.id.desc())
+        .limit(50)
+        .all()
+    )
+
     return templates.TemplateResponse(
         "index.html",
         {
@@ -101,6 +112,8 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "next_range": (next_first, next_last),
             "account_summaries": account_summaries,
             "forecast": forecast,
+            "cards": cards,
+            "card_transactions": card_transactions,
         },
     )
 
@@ -223,3 +236,72 @@ def api_forecast_accounts(
     return forecast_by_account_events(
         db, user_id=1, start=this_first, end=next_last, danger_threshold_yen=danger_threshold_yen
     )
+
+
+@app.post("/cards")
+def create_card(
+    request: Request,
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+    closing_day: int = Form(...),
+    payment_day: int = Form(...),
+    payment_account_id: int = Form(...),
+):
+    c = Card(
+        name=name,
+        closing_day=int(closing_day),
+        payment_day=int(payment_day),
+        payment_account_id=int(payment_account_id),
+    )
+    db.add(c)
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/cards/{card_id}/delete")
+def delete_card(card_id: int, db: Session = Depends(get_db)):
+    db.query(Card).filter(Card.id == card_id).delete(synchronize_session=False)
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-transactions")
+def create_card_transaction(
+    request: Request,
+    card_id: int = Form(...),
+    date_: date = Form(..., alias="date"),
+    amount_yen: int = Form(...),
+    merchant: str | None = Form(None),
+):
+    db = SessionLocal()
+    try:
+        # カード存在チェック（雑に落ちるの防止）
+        card = db.query(Card).filter(Card.id == card_id).one_or_none()
+        if card is None:
+            # 画面は同じでOK。必要なら flash 的な仕組み後で。
+            return RedirectResponse(url="/", status_code=303)
+
+        t = CardTransaction(
+            card_id=card_id,
+            date=date_,
+            amount_yen=int(amount_yen),
+            merchant=(merchant or None),
+        )
+        db.add(t)
+        db.commit()
+    finally:
+        db.close()
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-transactions/{tx_id}/delete")
+def delete_card_transaction(tx_id: int):
+    db = SessionLocal()
+    try:
+        db.query(CardTransaction).filter(CardTransaction.id == tx_id).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+    return RedirectResponse(url="/", status_code=303)
