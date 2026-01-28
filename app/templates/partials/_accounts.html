@@ -13,6 +13,17 @@
       <input name="balance_yen" type="number" min="0" value="0" required />
     </label>
 
+    <label>
+    種類
+    <select name="kind" required>
+        <option value="bank">口座</option>
+        <option value="cash">現金</option>
+        <option value="barcode">バーコード決済残高</option>
+        <option value="emoney">電子マネー残高</option>
+        <option value="nisa">NISA</option>
+    </select>
+    </label>
+
     <div class="actions col-span-all">
       <button class="btn" type="submit">口座を追加する</button>
     </div>
@@ -34,6 +45,7 @@
           <td>{{ a.id }}</td>
           <td style="font-weight: 650">{{ a.name }}</td>
           <td class="money">{{ "{:,}".format(a.balance_yen) }} 円</td>
+          <td >{{ a.kind }}</td>
           <td>
             <form method="post" action="/accounts/{{ a.id }}/delete" style="margin: 0">
               <button class="btn btn-danger" type="submit">削除</button>

@@ -19,6 +19,10 @@ class Account(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
 
+    # ★追加：資産の種類
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="bank")
+    # bank / cash / barcode / emoney / nisa
+
     balance_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
@@ -68,6 +72,9 @@ class CashflowEvent(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="expected")
 
     plan = relationship("Plan", back_populates="events")
+
+    # ★追加：移動（transfer）のペア識別子（UUID文字列など）
+    transfer_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 # ====== Phase1: Card ======

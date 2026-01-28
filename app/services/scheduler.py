@@ -95,8 +95,11 @@ def rebuild_events(db: Session, user_id: int) -> None:
     next_y, next_m = _month_add(this_first.year, this_first.month, 1)
     next_first = date(next_y, next_m, 1)
 
-    # いったんイベントを全部消す（ユーザー単位）
-    db.query(CashflowEvent).filter(CashflowEvent.user_id == user_id).delete(synchronize_session=False)
+    # 新：再生成対象だけ消す（plan と card 引落だけ）
+    db.query(CashflowEvent).filter(
+        CashflowEvent.user_id == user_id,
+        CashflowEvent.source.in_(["plan", "card"]),
+    ).delete(synchronize_session=False)
 
     # 作って入れる（plan由来）
     events: list[CashflowEvent] = []

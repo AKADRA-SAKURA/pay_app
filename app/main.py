@@ -1,3 +1,4 @@
+from uuid import uuid4
 from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -5,13 +6,14 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
 from datetime import date, datetime
 import calendar
+import re
 from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
 
-from .models import Account, Card, CardTransaction
+from .models import Account, Card, CardTransaction, CashflowEvent
 from .crud import list_accounts, create_account
 from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
 
@@ -97,6 +99,101 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         .all()
     )
 
+    oneoffs = (
+        db.query(CashflowEvent)
+        .filter(CashflowEvent.user_id == 1, CashflowEvent.source == "oneoff")
+        .order_by(CashflowEvent.date.desc(), CashflowEvent.id.desc())
+        .limit(30)
+        .all()
+    )
+
+    # account_id -> "名前(kind)" の表示名辞書
+    acc_label = {int(a.id): f"{a.name}（{getattr(a, 'kind', 'bank')}）" for a in accounts}
+
+    # transferイベント（bank/debit）を最新から取得
+    transfer_events = (
+        db.query(CashflowEvent)
+        .filter(CashflowEvent.user_id == 1)
+        .filter(CashflowEvent.source == "transfer")
+        .filter(CashflowEvent.transfer_id.isnot(None))
+        .order_by(CashflowEvent.date.desc(), CashflowEvent.id.desc())
+        .limit(80)  # 2行で1件なので少し多めに取る
+        .all()
+    )
+
+    # transfer_id ごとにまとめる（from/to が揃ったら1件にする）
+    group = {}
+    for e in transfer_events:
+        tid = e.transfer_id
+        if tid not in group:
+            group[tid] = {"evs": [], "date": e.date}
+        group[tid]["evs"].append(e)
+
+    transfers = []
+    # date desc で並び替え
+    for tid, g in sorted(group.items(), key=lambda kv: kv[1]["date"], reverse=True):
+        evs = g["evs"]
+
+        # from = マイナス、to = プラス とみなす
+        ev_from = next((x for x in evs if int(x.amount_yen) < 0), None)
+        ev_to = next((x for x in evs if int(x.amount_yen) > 0), None)
+
+        # 片方しかない場合はスキップ（データ不整合対策）
+        if not ev_from or not ev_to:
+            continue
+
+        amt = int(ev_to.amount_yen)
+
+        # method は description か別カラムが無いので暫定で "transfer"
+        # もし create_transfer で description に bank/debit を入れてるならそこから推定もできる
+        method = "transfer"
+
+        transfers.append(
+            {
+                "transfer_id": tid,
+                "id": ev_to.id,  # 表示用（to側のidを代表に）
+                "date": ev_to.date,
+                "method": method,
+                "amount_yen": amt,
+                "from_label": acc_label.get(int(ev_from.account_id), f"ID:{ev_from.account_id}"),
+                "to_label": acc_label.get(int(ev_to.account_id), f"ID:{ev_to.account_id}"),
+            }
+        )
+
+        if len(transfers) >= 30:
+            break
+
+    # accounts -> 表示ラベル（名前(kind)）
+    acc_label = {int(a.id): f"{a.name}（{getattr(a, 'kind', 'bank')}）" for a in accounts}
+
+    # note から "charge to account_id=123" を抜く
+    charge_re = re.compile(r"charge to account_id=(\d+)")
+
+    # クレカチャージ（CardTransaction）を最新から取る
+    charge_txs = (
+        db.query(CardTransaction)
+        .options(joinedload(CardTransaction.card))
+        .filter(CardTransaction.note.isnot(None))
+        .filter(CardTransaction.note.like("charge to account_id=%"))
+        .order_by(CardTransaction.date.desc(), CardTransaction.id.desc())
+        .limit(30)
+        .all()
+    )
+
+    card_charges = []
+    for tx in charge_txs:
+        m = charge_re.search(tx.note or "")
+        to_id = int(m.group(1)) if m else None
+        card_charges.append(
+            {
+                "id": tx.id,
+                "date": tx.date,
+                "amount_yen": int(tx.amount_yen),
+                "card_name": tx.card.name if tx.card else "-",
+                "to_label": acc_label.get(to_id, f"ID:{to_id}" if to_id else "-"),
+            }
+        )
+
     return templates.TemplateResponse(
         "index.html",
         {
@@ -114,6 +211,9 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "forecast": forecast,
             "cards": cards,
             "card_transactions": card_transactions,
+            "oneoffs": oneoffs,
+            "transfers": transfers,
+            "card_charges": card_charges,
         },
     )
 
@@ -304,4 +404,124 @@ def delete_card_transaction(tx_id: int):
     finally:
         db.close()
 
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/oneoff")
+def create_oneoff(
+    db: Session = Depends(get_db),
+    date_: date = Form(..., alias="date"),
+    account_id: int = Form(...),
+    amount_yen: int = Form(...),
+    direction: str = Form(...),  # "expense" or "income"
+    description: str = Form(...),
+):
+    amt = int(amount_yen)
+    if direction == "expense":
+        amt = -abs(amt)
+    else:
+        amt = abs(amt)
+
+    ev = CashflowEvent(
+        user_id=1,
+        date=date_,
+        account_id=int(account_id),
+        amount_yen=amt,
+        plan_id=None,
+        description=description,
+        source="oneoff",
+        status="expected",
+    )
+    db.add(ev)
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/oneoff/{event_id}/delete")
+def delete_oneoff(event_id: int, db: Session = Depends(get_db)):
+    db.query(CashflowEvent).filter(
+        CashflowEvent.id == event_id,
+        CashflowEvent.source == "oneoff",
+    ).delete(synchronize_session=False)
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/transfer")
+def create_transfer(
+    db: Session = Depends(get_db),
+    date_: date = Form(..., alias="date"),
+    from_account_id: int = Form(...),
+    to_account_id: int = Form(...),
+    amount_yen: int = Form(...),
+    method: str = Form(...),  # "bank" / "debit" / "card"
+    description: str = Form("チャージ"),
+    card_id: int | None = Form(None),
+):
+    amt = abs(int(amount_yen))
+    tid = str(uuid4())
+
+    # to側は必ず +（残高が増える）
+    ev_to = CashflowEvent(
+        user_id=1,
+        date=date_,
+        account_id=int(to_account_id),
+        amount_yen=amt,
+        plan_id=None,
+        description=f"{description}（IN）",
+        source="transfer",
+        transfer_id=tid,
+        status="expected",
+    )
+    db.add(ev_to)
+
+    if method in ("bank", "debit"):
+        # from側も即時に -（口座から差し引き / デビッド＝口座即時）
+        ev_from = CashflowEvent(
+            user_id=1,
+            date=date_,
+            account_id=int(from_account_id),
+            amount_yen=-amt,
+            plan_id=None,
+            description=f"{description}（OUT）",
+            source="transfer",
+            transfer_id=tid,
+            status="expected",
+        )
+        db.add(ev_from)
+
+    elif method == "card":
+        # ★クレカチャージ：from側の即時マイナスはしない（引落日に減る）
+        # 代わりに CardTransaction を追加して、既存の引落生成で bank が減る
+        if not card_id:
+            return RedirectResponse(url="/", status_code=303)
+
+        tx = CardTransaction(
+            card_id=int(card_id),
+            date=date_,
+            amount_yen=amt,  # 支出=正
+            merchant=description,
+            note=f"charge to account_id={to_account_id}",
+        )
+        db.add(tx)
+
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/transfer/{transfer_id}/delete")
+def delete_transfer(transfer_id: str, db: Session = Depends(get_db)):
+    db.query(CashflowEvent).filter(
+        CashflowEvent.user_id == 1,
+        CashflowEvent.source == "transfer",
+        CashflowEvent.transfer_id == transfer_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card_charges/{tx_id}/delete")
+def delete_card_charge(tx_id: int, db: Session = Depends(get_db)):
+    db.query(CardTransaction).filter(CardTransaction.id == tx_id).delete(synchronize_session=False)
+    db.commit()
     return RedirectResponse(url="/", status_code=303)
