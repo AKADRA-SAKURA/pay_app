@@ -70,10 +70,145 @@ h1 {
   gap: 14px;
 }
 
+/* ===== M2: danger highlight ===== */
+.row-danger td {
+  background: var(--danger-weak);
+}
+
+.row-danger td:first-child {
+  box-shadow: inset 4px 0 0 var(--danger);
+}
+
+/* “危険”セルをチップっぽく */
+.danger-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--danger-weak);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+/* 最低残高がマイナスなら文字も赤寄りに（任意） */
+.neg {
+  color: #b91c1c;
+}
+
+/* ===== Overlay (modal) styling ===== */
+#overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  z-index: 9999;
+  padding: 18px;
+}
+
+#overlay .overlay-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: min(900px, 92vw);
+  margin: 6vh auto;
+  padding: 16px;
+}
+
+#overlay .overlay-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+#overlay .overlay-body {
+  max-height: 70vh;
+  overflow: auto;
+  margin-top: 12px;
+}
+
+#overlay .overlay-body table {
+  width: 100%;
+}
+
+.section {
+  margin-top: 14px;
+}
+.section:first-child {
+  margin-top: 0;
+}
+.section-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.35;
+}
+
+.mt-14 { margin-top: 14px; }
+.mb-14 { margin-bottom: 14px; }
+.mb-14 { margin-bottom: 14px; }
+.mt-10 { margin-top: 10px; }
+.mt-12 { margin-top: 12px; }
+
+.col-span-all { grid-column: 1 / -1; }
+
+.no-shadow { box-shadow: none !important; }
+
+.flex { display: flex; }
+.flex-wrap { flex-wrap: wrap; }
+.gap-12 { gap: 12px; }
+.items-end { align-items: end; }
+.items-center { align-items: center; }
+.justify-end { justify-content: flex-end; }
+
+select,
+input[type="date"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fbfcfc;
+  color: var(--text);
+  outline: none;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-wrap table {
+  min-width: 640px; /* 必要なら 720/900 に */
+}
+
+
+select:focus,
+input[type="date"]:focus {
+  border-color: rgba(47, 183, 167, 0.55);
+  box-shadow: 0 0 0 4px rgba(47, 183, 167, 0.16);
+  background: #ffffff;
+}
+
+
 @media (min-width: 860px) {
   .grid {
     grid-template-columns: 1fr 1.2fr;
     align-items: start;
+    grid-auto-flow: row dense;
   }
 }
 

@@ -1,0 +1,85 @@
+<div class="card">
+  <h2>カード管理 <span class="pill">フェーズ1</span></h2>
+
+  {% if not accounts %}
+    <div class="hint">※ 先に「口座」を1つ作ってね（引落口座に使う）。</div>
+  {% endif %}
+
+  <form method="post" action="/cards" class="form">
+    <label class="col-span-all">
+      カード名
+      <input name="name" placeholder="楽天カード / 三井住友" required />
+    </label>
+
+    <label>
+      締日（1-31）
+      <input name="closing_day" type="number" min="1" max="31" value="15" required />
+    </label>
+
+    <label>
+      支払日（1-31）
+      <input name="payment_day" type="number" min="1" max="31" value="10" required />
+    </label>
+
+    <label class="col-span-all">
+      引落口座
+      <select name="payment_account_id" required>
+        {% for a in accounts %}
+          <option value="{{ a.id }}">{{ a.name }}（ID:{{ a.id }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="actions col-span-all">
+      {% if not accounts %}
+        <button class="btn" type="submit" disabled style="opacity:.5;cursor:not-allowed;">カードを追加</button>
+      {% else %}
+        <button class="btn" type="submit">カードを追加</button>
+      {% endif %}
+    </div>
+  </form>
+
+  <div class="mt-14">
+    <h2>カード一覧</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:70px;">ID</th>
+          <th>カード名</th>
+          <th style="width:120px;">締日</th>
+          <th style="width:120px;">支払日</th>
+          <th>引落口座</th>
+          <th style="width:100px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cards %}
+        <tr>
+          <td>{{ c.id }}</td>
+          <td style="font-weight:650">{{ c.name }}</td>
+          <td>{{ c.closing_day }}日</td>
+          <td>{{ c.payment_day }}日</td>
+          <td>
+            {# accountsから引くのが面倒なら、今はID表示でもOK #}
+            {{ c.payment_account_id }}
+          </td>
+          <td>
+            <form method="post" action="/cards/{{ c.id }}/delete" style="margin:0;">
+              <button class="btn btn-danger" type="submit">削除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if not cards %}
+        <tr><td colspan="6" class="empty">まだカードがありません</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <div class="hint mt-10">
+      ※ payment_month_offset は固定で +1（締めた翌月に引落）で扱います。
+    </div>
+  </div>
+</div>

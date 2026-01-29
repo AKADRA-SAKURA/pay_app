@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 import calendar
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Plan, CashflowEvent
+from app.models import Plan, CashflowEvent, Card, CardTransaction, CardStatement
 
 
 def _last_day_of_month(y: int, m: int) -> int:
@@ -94,13 +95,98 @@ def rebuild_events(db: Session, user_id: int) -> None:
     next_y, next_m = _month_add(this_first.year, this_first.month, 1)
     next_first = date(next_y, next_m, 1)
 
-    # いったんイベントを全部消す（ユーザー単位）
-    db.query(CashflowEvent).filter(CashflowEvent.user_id == user_id).delete(synchronize_session=False)
+    # 新：再生成対象だけ消す（plan と card 引落だけ）
+    db.query(CashflowEvent).filter(
+        CashflowEvent.user_id == user_id,
+        CashflowEvent.source.in_(["plan", "card"]),
+    ).delete(synchronize_session=False)
 
-    # 作って入れる
-    events = []
+    # 作って入れる（plan由来）
+    events: list[CashflowEvent] = []
     events += build_month_events(db, user_id, this_first)
     events += build_month_events(db, user_id, next_first)
 
+    # ★ 追記：カード引落（今月・来月の引落分）
+    events += build_card_withdraw_events(db, user_id, this_first.year, this_first.month)
+    events += build_card_withdraw_events(db, user_id, next_first.year, next_first.month)
+
     db.add_all(events)
     db.commit()
+
+
+def _clamp_date(y: int, m: int, d: int) -> date:
+    return date(y, m, _clamp_day(y, m, d))
+
+
+def _add_months(y: int, m: int, add: int) -> tuple[int, int]:
+    # 既存 _month_add と同じ意味（好みで _month_add を使ってもOK）
+    return _month_add(y, m, add)
+
+
+def card_period_for_withdraw_month(card: Card, withdraw_y: int, withdraw_m: int) -> tuple[date, date, date]:
+    end_y, end_m = _month_add(withdraw_y, withdraw_m, -1)
+    period_end = _clamp_date(end_y, end_m, card.closing_day)
+
+    prev_end_y, prev_end_m = _month_add(end_y, end_m, -1)
+    prev_period_end = _clamp_date(prev_end_y, prev_end_m, card.closing_day)
+
+    period_start = prev_period_end + timedelta(days=1)
+    withdraw_date = _clamp_date(withdraw_y, withdraw_m, card.payment_day)
+    return period_start, period_end, withdraw_date
+
+
+def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withdraw_m: int) -> list[CashflowEvent]:
+    """
+    指定の引落月(YYYY,MM)について、カードごとに締め期間を集計し、
+    withdraw_date に引落イベントを作る（DBにはまだ入れない）
+    """
+    cards = db.query(Card).all()
+    created: list[CashflowEvent] = []
+
+    for card in cards:
+        period_start, period_end, withdraw_date = card_period_for_withdraw_month(card, withdraw_y, withdraw_m)
+
+        total = db.query(func.coalesce(func.sum(CardTransaction.amount_yen), 0)).filter(
+            CardTransaction.card_id == card.id,
+            CardTransaction.date >= period_start,
+            CardTransaction.date <= period_end,
+        ).scalar()
+
+        total = int(total or 0)
+
+        # statement（保存しておくと後で整合性が取れる）
+        stmt = db.query(CardStatement).filter(
+            CardStatement.card_id == card.id,
+            CardStatement.withdraw_date == withdraw_date,
+        ).one_or_none()
+
+        if stmt is None:
+            stmt = CardStatement(
+                card_id=card.id,
+                period_start=period_start,
+                period_end=period_end,
+                amount_yen=total,
+                withdraw_date=withdraw_date,
+            )
+            db.add(stmt)
+        else:
+            stmt.period_start = period_start
+            stmt.period_end = period_end
+            stmt.amount_yen = total
+
+        desc = f"カード引落: {card.name} ({period_start}〜{period_end})"
+
+        created.append(
+            CashflowEvent(
+                user_id=user_id,
+                plan_id=None,  # ★ 重要：nullable化必須
+                account_id=card.payment_account_id,
+                date=withdraw_date,
+                amount_yen=-abs(total),   # 引落はマイナス
+                description=desc,
+                source="card",
+                status="expected",
+            )
+        )
+
+    return created

@@ -1,0 +1,150 @@
+<div class="card">
+  <h2>チャージ / 資産移動 <span class="pill">PayPay・Suica・NISA</span></h2>
+
+  <form method="post" action="/transfer" class="form">
+    <label class="col-span-all">
+      日付
+      <input name="date" type="date" required />
+    </label>
+
+    <label>
+      方法
+      <select name="method" required>
+        <option value="bank">口座からチャージ</option>
+        <option value="debit">デビッド（口座即時）</option>
+        <option value="card">クレカチャージ（引落は後日）</option>
+      </select>
+    </label>
+
+    <label>
+      金額（円）
+      <input name="amount_yen" type="number" min="0" value="0" required />
+    </label>
+
+    <label class="col-span-all">
+      From（口座など）
+      <select name="from_account_id" required>
+        {% for a in accounts %}
+          <option value="{{ a.id }}">{{ a.name }}（{{ a.kind }} / ID:{{ a.id }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="col-span-all">
+      To（PayPay / Suica / NISAなど）
+      <select name="to_account_id" required>
+        {% for a in accounts %}
+          <option value="{{ a.id }}">{{ a.name }}（{{ a.kind }} / ID:{{ a.id }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="col-span-all">
+      クレカ（method=card のとき）
+      <select name="card_id">
+        <option value="">-</option>
+        {% for c in cards %}
+          <option value="{{ c.id }}">{{ c.name }}（ID:{{ c.id }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="col-span-all">
+      メモ
+      <input name="description" placeholder="PayPayチャージ / Suicaチャージ / NISA積立" />
+    </label>
+
+    <div class="actions col-span-all">
+      <button class="btn" type="submit">登録</button>
+    </div>
+
+    <div class="hint col-span-all">
+      ※ クレカチャージは「Toが増える」＋「カード決済が増える」扱い → 引落日に口座が減ります
+    </div>
+  </form>
+
+  <!-- 一覧（transfer） -->
+  <div class="mt-14">
+    <h2>チャージ履歴 <span class="pill">最新30件</span></h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px;">ID</th>
+            <th style="width:140px;">日付</th>
+            <th style="width:90px;">方法</th>
+            <th style="width:160px;">金額</th>
+            <th>From → To</th>
+            <th style="width:100px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in transfers %}
+          <tr>
+            <td>{{ t["id"] }}</td>
+            <td>{{ t["date"] }}</td>
+            <td><span class="pill">{{ t["method"] }}</span></td>
+            <td class="money">{{ "{:,}".format(t["amount_yen"]) }} 円</td>
+            <td>{{ t["from_label"] }} → {{ t["to_label"] }}</td>
+            <td>
+              <form method="post" action="/transfer/{{ t["transfer_id"] }}/delete" style="margin:0;">
+                <button class="btn btn-danger" type="submit">削除</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+
+          {% if not transfers %}
+          <tr><td colspan="6" class="empty">まだチャージがありません</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- クレカチャージ一覧（CardTransaction） -->
+    <div class="mt-14">
+    <h2>クレカチャージ履歴 <span class="pill">最新30件</span></h2>
+
+    <table>
+        <thead>
+        <tr>
+            <th style="width:90px;">ID</th>
+            <th style="width:140px;">日付</th>
+            <th style="width:160px;">カード</th>
+            <th style="width:160px;">金額</th>
+            <th>チャージ先</th>
+            <th style="width:100px;"></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for t in card_charges %}
+        <tr>
+            <td>{{ t.id }}</td>
+            <td>{{ t.date }}</td>
+            <td style="font-weight:650">{{ t.card_name }}</td>
+            <td class="money">{{ "{:,}".format(t.amount_yen) }} 円</td>
+            <td>{{ t.to_label }}</td>
+            <td>
+            <form method="post" action="/card_charges/{{ t.id }}/delete" style="margin:0;">
+                <button class="btn btn-danger" type="submit">削除</button>
+            </form>
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not card_charges %}
+        <tr><td colspan="6" class="empty">まだクレカチャージがありません</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+
+    <div class="hint mt-10">
+        ※ クレカチャージは「To残高が増える」＋「カード利用が増える」。口座の減少は引落日に反映されます。
+    </div>
+    </div>
+
+    <div class="hint mt-10">
+      ※ bank/debit のチャージは「From減る / To増える」の2イベントを1行にまとめて表示しています。
+    </div>
+  </div>
+</div>

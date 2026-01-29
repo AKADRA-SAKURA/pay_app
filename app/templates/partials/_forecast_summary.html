@@ -1,0 +1,59 @@
+<!-- 口座別 残高予測（サマリ + 危険検知） -->
+<div class="card mt-14">
+  <h2>口座別 残高予測（サマリ） <span class="pill">M2</span></h2>
+
+  {% if forecast and forecast["accounts"] %}
+  <table>
+    <thead>
+      <tr>
+        <th>口座</th>
+        <th style="width: 140px">開始</th>
+        <th style="width: 140px">最終</th>
+        <th style="width: 140px">最低</th>
+        <th style="width: 140px">最低の日</th>
+        <th style="width: 80px">危険</th>
+        <th style="width: 90px">詳細</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for acc in forecast["accounts"] %}
+        {% set s = acc.get("summary") %}
+        <tr class="{% if s and s.get('is_danger') %}row-danger{% endif %}">
+          <td style="font-weight: 650">{{ acc["name"] }}</td>
+          <td class="money">{{ "{:,}".format(acc.get("start_balance_yen", 0)) }} 円</td>
+          <td class="money">{{ "{:,}".format((s.get("end_balance_yen") if s else acc.get("start_balance_yen", 0)) or 0) }} 円</td>
+          <td class="money {% if s and (s.get('min_balance_yen',0) < 0) %}neg{% endif %}">
+            {{ "{:,}".format((s.get("min_balance_yen") if s else 0) or 0) }} 円
+          </td>
+          <td>{{ (s.get("min_date") if s else "-") }}</td>
+          <td style="text-align:center">
+            {% if s and s.get("is_danger") %}
+              <span class="danger-chip">⚠️</span>
+            {% else %}
+              ✅
+            {% endif %}
+          </td>
+          <td style="text-align:center">
+            <button
+              type="button"
+              class="btn detail-btn"
+              data-account-name="{{ acc["name"] }}"
+              data-series='{{ acc["series"] | tojson }}'
+            >
+              表示
+            </button>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="hint mt-10">
+    ※ 「最低」は予測期間内で一番残高が低い日です。⚠️は閾値未満（デフォルト0円未満）を意味します。
+  </div>
+  {% else %}
+  <div class="empty">
+    予測データがありません（イベント再生成を押してね）
+  </div>
+  {% endif %}
+</div>

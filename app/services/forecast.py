@@ -1,9 +1,18 @@
 from __future__ import annotations
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from sqlalchemy.orm import Session
+from typing import Any
 
 from app.models import Account, CashflowEvent
+
+
+def _iso(d: Any) -> str:
+    if d is None:
+        return ""
+    if isinstance(d, (date, datetime)):
+        return d.date().isoformat() if isinstance(d, datetime) else d.isoformat()
+    return str(d)
 
 
 def forecast_by_account_events(
@@ -12,6 +21,7 @@ def forecast_by_account_events(
     start: date,
     end: date,
     include_start_point: bool = True,
+    danger_threshold_yen: int = 0
 ) -> dict:
     """
     口座別に、start〜endのイベントを順に適用した「イベント時点の残高推移」を返す
@@ -45,7 +55,7 @@ def forecast_by_account_events(
     if include_start_point:
         for a in accounts:
             aid = int(a.id)
-            series[aid].append({"date": start, "balance_yen": balances[aid], "delta_yen": 0, "event_id": None})
+            series[aid].append({"date": _iso(start), "balance_yen": balances[aid], "delta_yen": 0, "event_id": None})
 
     # イベント適用
     for ev in events:
@@ -68,27 +78,34 @@ def forecast_by_account_events(
     total_start = sum(int(a.balance_yen) for a in accounts)
     total_series = []
     if include_start_point:
-        total_series.append({"date": start, "balance_yen": total_start, "delta_yen": 0, "event_id": None})
+        total_series.append({"date": _iso(start), "balance_yen": total_start, "delta_yen": 0, "event_id": None})
 
     total_balance = total_start
     for ev in events:
         total_balance += int(ev.amount_yen)
         total_series.append(
-            {"date": ev.date, "balance_yen": total_balance, "delta_yen": int(ev.amount_yen), "event_id": int(ev.id)}
+            {"date": _iso(ev.date), "balance_yen": total_balance, "delta_yen": int(ev.amount_yen), "event_id": int(ev.id)}
         )
+
+    accounts_out = []
+    for a in accounts:
+        aid = int(a.id)
+        s = series[aid]  # list
+
+        summary = _summarize_series(s, start, int(a.balance_yen), danger_threshold_yen)
+
+        accounts_out.append({
+            "account_id": aid,
+            "name": a.name,
+            "start_balance_yen": int(a.balance_yen),
+            "summary": summary,
+            "series": s,
+        })
 
     return {
         "start": start,
         "end": end,
-        "accounts": [
-            {
-                "account_id": int(a.id),
-                "name": a.name,
-                "start_balance_yen": int(a.balance_yen),
-                "series": series[int(a.id)],
-            }
-            for a in accounts
-        ],
+        "accounts": accounts_out,
         "total_series": total_series,
     }
 
@@ -122,7 +139,7 @@ def forecast_by_account_daily(db: Session, user_id: int, start: date, end: date)
         for d in _daterange(start, end):
             if d in bal_by_date:
                 last_balance = bal_by_date[d]
-            daily.append({"date": d, "balance_yen": last_balance})
+            daily.append({"date": _iso(d), "balance_yen": last_balance})
 
         out_accounts.append(
             {
@@ -143,6 +160,25 @@ def forecast_by_account_daily(db: Session, user_id: int, start: date, end: date)
     for d in _daterange(start, end):
         if d in total_map:
             last_total = total_map[d]
-        total_daily.append({"date": d, "balance_yen": last_total})
+        total_daily.append({"date": _iso(d), "balance_yen": last_total})
 
     return {"start": start, "end": end, "accounts": out_accounts, "total_series": total_daily}
+
+def _summarize_series(series, start_date, start_balance, danger_threshold_yen=0):
+    if not series:
+        min_balance = start_balance
+        min_date = start_date
+        end_balance = start_balance
+    else:
+        min_point = min(series, key=lambda p: int(p.get("balance_yen", start_balance)))
+        min_balance = int(min_point.get("balance_yen", start_balance))
+        min_date = min_point.get("date", start_date)
+        end_balance = int(series[-1].get("balance_yen", start_balance))
+
+    return {
+        "min_balance_yen": min_balance,
+        "min_date": min_date,
+        "end_balance_yen": end_balance,
+        "danger_threshold_yen": danger_threshold_yen,
+        "is_danger": (min_balance < danger_threshold_yen),
+    }

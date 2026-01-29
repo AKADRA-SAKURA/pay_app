@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{% block title %}固定費（サブスク）{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    {% block head_extra %}{% endblock %}
+  </head>
+
+  <body>
+    <div class="wrap">
+      <div class="header">
+        <div>
+          <h1>{% block page_h1 %}固定費（サブスク）{% endblock %}</h1>
+          <p class="sub">
+            {% block page_sub %}
+              やさしい見た目で、まずは「登録→一覧」から。次は月間ビューに進めるよ。
+            {% endblock %}
+          </p>
+        </div>
+        <span class="badge">LAN: http://{{ request.client.host }}:8000</span>
+      </div>
+
+      {% block content %}{% endblock %}
+    </div>
+
+    {% block body_end %}{% endblock %}
+  </body>
+</html>

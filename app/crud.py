@@ -96,29 +96,33 @@ def delete_plan(db, plan_id: int, user_id: int = 1) -> None:
         db.commit()
 
 def list_events_between_with_plan(db: Session, user_id: int, start, end):
-    rows = (
-        db.query(CashflowEvent, Plan)
-        .join(Plan, CashflowEvent.plan_id == Plan.id)
-        .filter(
-            CashflowEvent.user_id == user_id,
-            CashflowEvent.date >= start,
-            CashflowEvent.date <= end,
+    q = (
+        db.query(
+            CashflowEvent.id,
+            CashflowEvent.date,
+            CashflowEvent.amount_yen,
+            CashflowEvent.account_id,
+            CashflowEvent.source,
+            CashflowEvent.description,
+            Plan.title.label("plan_title"),
         )
-        .order_by(CashflowEvent.date, CashflowEvent.id)
-        .all()
+        .outerjoin(Plan, Plan.id == CashflowEvent.plan_id)  # ★ここがポイント
+        .filter(CashflowEvent.user_id == user_id)
+        .filter(CashflowEvent.date >= start, CashflowEvent.date <= end)
+        .order_by(CashflowEvent.date.asc(), CashflowEvent.id.asc())
     )
 
-    # テンプレで扱いやすいよう dict に整形
-    out = []
-    for e, p in rows:
-        out.append(
+    rows = []
+    for r in q.all():
+        title = r.plan_title or r.description or "-"
+        rows.append(
             {
-                "date": e.date,
-                "amount_yen": e.amount_yen,
-                "plan_title": p.title,
-                "plan_type": p.type,
-                "account_id": e.account_id,
+                "id": r.id,
+                "date": r.date,
+                "amount_yen": r.amount_yen,
+                "account_id": r.account_id,
+                "plan_title": title,     # ★テンプレは今まで通りこれを表示できる
+                "source": r.source,
             }
         )
-    return out
-
+    return rows
