@@ -12,10 +12,10 @@ from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
-
 from .models import Account, Card, CardTransaction, CashflowEvent
 from .crud import list_accounts, create_account
 from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
+from .services.forecast import forecast_free_daily
 
 # 起動時にテーブル作成（簡易版）
 Base.metadata.create_all(bind=engine)
@@ -525,3 +525,16 @@ def delete_card_charge(tx_id: int, db: Session = Depends(get_db)):
     db.query(CardTransaction).filter(CardTransaction.id == tx_id).delete(synchronize_session=False)
     db.commit()
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/api/forecast/free")
+def api_forecast_free(db: Session = Depends(get_db)):
+    today = date.today()
+    this_first = today.replace(day=1)
+    next_first = date(this_first.year + (1 if this_first.month == 12 else 0),
+                      1 if this_first.month == 12 else this_first.month + 1,
+                      1)
+    end = month_range(next_first)[1]  # 来月末
+
+    series = forecast_free_daily(db, user_id=1, start=this_first, end=end)
+    return {"series": series}

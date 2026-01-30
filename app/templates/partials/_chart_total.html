@@ -1,0 +1,16 @@
+<div class="card col-span-all">
+  <h2>総資産の推移（予測） <span class="pill">Chart.js</span></h2>
+
+  <div class="hint" style="margin-bottom: 10px;">
+    ※ 今月〜来月の範囲。イベント時点の点を線でつないで表示します。
+  </div>
+
+  <div class="chart-wrap">
+    <canvas id="totalChart"></canvas>
+  </div>
+
+  <!-- JS に渡すデータ（tojsonで安全に埋め込み） -->
+  <script id="totalSeriesData" type="application/json">
+    {{ (forecast["total_series"] if forecast else []) | tojson }}
+  </script>
+</div>

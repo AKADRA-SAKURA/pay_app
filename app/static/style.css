@@ -222,6 +222,16 @@ h1 {
   color: var(--muted);
 }
 
+.chart-wrap {
+  position: relative;
+  height: 320px;        /* ←ここで縦を増やす */
+  width: 100%;
+}
+
+.chart-wrap canvas {
+  width: 100% !important;
+}
+
 /* mobile */
 @media (max-width: 640px) {
   .hero {
