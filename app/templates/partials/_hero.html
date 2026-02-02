@@ -1,0 +1,23 @@
+<div class="hero">
+  <div class="hero-main">
+    <div class="hero-label">今月の自由に使えるお金</div>
+    <div class="hero-amount">
+      {{ "{:,}".format(free_this) }} <span class="yen">円</span>
+    </div>
+    <div class="hero-sub">
+      {{ this_range[0] }} 〜 {{ this_range[1] }}
+    </div>
+  </div>
+
+  <div class="hero-side">
+    <div class="hero-card">
+      <div class="hero-label small">来月末の見込み</div>
+      <div class="hero-amount small">
+        {{ "{:,}".format(free_next) }} <span class="yen">円</span>
+      </div>
+      <div class="hero-sub">
+        {{ next_range[0] }} 〜 {{ next_range[1] }}
+      </div>
+    </div>
+  </div>
+</div>

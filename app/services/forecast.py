@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from typing import Any
 
 from app.models import Account, CashflowEvent
+from ..crud import total_start_balance
 
 
 def _iso(d: Any) -> str:
@@ -123,23 +124,22 @@ def forecast_by_account_daily(db: Session, user_id: int, start: date, end: date)
     """
     base = forecast_by_account_events(db, user_id=user_id, start=start, end=end, include_start_point=True)
 
-    # account_id -> (date -> balance) を作る
     out_accounts = []
 
     for acc in base["accounts"]:
-        # イベント時点のバランスをmap化
+        # イベント時点のバランスを map 化（キーは ISO 文字列に統一）
         bal_by_date = {}
         for p in acc["series"]:
-            bal_by_date[p["date"]] = int(p["balance_yen"])
+            bal_by_date[str(p["date"])] = int(p["balance_yen"])
 
-        # 日次で穴埋め
         daily = []
         last_balance = int(acc["start_balance_yen"])
 
         for d in _daterange(start, end):
-            if d in bal_by_date:
-                last_balance = bal_by_date[d]
-            daily.append({"date": _iso(d), "balance_yen": last_balance})
+            key = _iso(d)
+            if key in bal_by_date:
+                last_balance = bal_by_date[key]
+            daily.append({"date": key, "balance_yen": last_balance})
 
         out_accounts.append(
             {
@@ -150,19 +150,30 @@ def forecast_by_account_daily(db: Session, user_id: int, start: date, end: date)
             }
         )
 
-    # totalも日次にするなら同様（ここでは省略しないで一応作る）
+    # total_series も ISO 文字列キーで統一して穴埋め
     total_map = {}
     for p in base["total_series"]:
-        total_map[p["date"]] = int(p["balance_yen"])
+        total_map[str(p["date"])] = int(p["balance_yen"])
 
     total_daily = []
-    last_total = total_map.get(start, 0)
+    last_total = total_map.get(_iso(start), 0)
+
     for d in _daterange(start, end):
-        if d in total_map:
-            last_total = total_map[d]
-        total_daily.append({"date": _iso(d), "balance_yen": last_total})
+        key = _iso(d)
+        if key in total_map:
+            last_total = total_map[key]
+        total_daily.append({"date": key, "balance_yen": last_total})
+
+    # total_daily を accounts の daily series から作り直す（確実に合う）
+    total_by_date = {}
+    for acc in out_accounts:
+        for p in acc["series"]:
+            total_by_date[p["date"]] = total_by_date.get(p["date"], 0) + int(p["balance_yen"])
+
+    total_daily = [{"date": d, "balance_yen": total_by_date[d]} for d in sorted(total_by_date.keys())]
 
     return {"start": start, "end": end, "accounts": out_accounts, "total_series": total_daily}
+
 
 def _summarize_series(series, start_date, start_balance, danger_threshold_yen=0):
     if not series:
@@ -182,3 +193,32 @@ def _summarize_series(series, start_date, start_balance, danger_threshold_yen=0)
         "danger_threshold_yen": danger_threshold_yen,
         "is_danger": (min_balance < danger_threshold_yen),
     }
+
+
+def forecast_free_daily(db: Session, user_id: int, start: date, end: date) -> list[dict]:
+    # 口座合算の開始残高（現金やPayPay等も含めたいなら、ここをtotal化）
+    start_balance = total_start_balance(db, user_id)  # 既存のやつがある前提
+
+    # 期間内イベントを日付ごとに合算（口座合算）
+    rows = (
+        db.query(CashflowEvent.date, CashflowEvent.amount_yen)
+        .filter(CashflowEvent.user_id == user_id)
+        .filter(CashflowEvent.date >= start)
+        .filter(CashflowEvent.date <= end)
+        .all()
+    )
+
+    delta_by_date = {}
+    for d, amt in rows:
+        key = _iso(d)            # "YYYY-MM-DD"
+        delta_by_date[key] = delta_by_date.get(key, 0) + int(amt)
+
+    series = []
+    bal = int(start_balance)
+
+    for d in _daterange(start, end):
+        key = _iso(d)
+        bal += delta_by_date.get(key, 0)
+        series.append({"date": key, "balance_yen": bal})
+
+    return series

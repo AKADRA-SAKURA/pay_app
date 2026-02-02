@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from uuid import uuid4
 from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -12,10 +15,12 @@ from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
-
 from .models import Account, Card, CardTransaction, CashflowEvent
 from .crud import list_accounts, create_account
 from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
+from .services.forecast import forecast_free_daily
+from app.advice.service import get_today_advice
+from app.utils.dates import month_range
 
 # 起動時にテーブル作成（簡易版）
 Base.metadata.create_all(bind=engine)
@@ -214,6 +219,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "oneoffs": oneoffs,
             "transfers": transfers,
             "card_charges": card_charges,
+            "advice": get_today_advice(db, user_id=1),
         },
     )
 
@@ -299,13 +305,6 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
         db.delete(acc)
         db.commit()
     return RedirectResponse(url="/", status_code=303)
-
-
-def month_range(d: date):
-    first = d.replace(day=1)
-    last_day = calendar.monthrange(d.year, d.month)[1]
-    last = d.replace(day=last_day)
-    return first, last
 
 
 @app.post("/events/rebuild")
@@ -525,3 +524,16 @@ def delete_card_charge(tx_id: int, db: Session = Depends(get_db)):
     db.query(CardTransaction).filter(CardTransaction.id == tx_id).delete(synchronize_session=False)
     db.commit()
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/api/forecast/free")
+def api_forecast_free(db: Session = Depends(get_db)):
+    today = date.today()
+    this_first = today.replace(day=1)
+    next_first = date(this_first.year + (1 if this_first.month == 12 else 0),
+                      1 if this_first.month == 12 else this_first.month + 1,
+                      1)
+    end = month_range(next_first)[1]  # 来月末
+
+    series = forecast_free_daily(db, user_id=1, start=this_first, end=end)
+    return {"series": series}

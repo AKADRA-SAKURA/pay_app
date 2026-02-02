@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>{% block title %}固定費（サブスク）{% endblock %}</title>
+    <title>{% block title %}家計簿アプリ{% endblock %}</title>
     <link rel="stylesheet" href="/static/style.css" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -12,10 +12,10 @@
     <div class="wrap">
       <div class="header">
         <div>
-          <h1>{% block page_h1 %}固定費（サブスク）{% endblock %}</h1>
+          <h1>{% block page_h1 %}家計簿アプリ{% endblock %}</h1>
           <p class="sub">
             {% block page_sub %}
-              やさしい見た目で、まずは「登録→一覧」から。次は月間ビューに進めるよ。
+              収支記録から「これから」のアクションにつなげるアプリ。
             {% endblock %}
           </p>
         </div>
@@ -25,6 +25,11 @@
       {% block content %}{% endblock %}
     </div>
 
-    {% block body_end %}{% endblock %}
+    {% block body_end %}
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+        <script src="/static/overlay.js"></script>
+        <script src="/static/chart_total.js"></script>
+        <script src="/static/chart_free.js"></script>
+    {% endblock %}
   </body>
 </html>

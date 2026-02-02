@@ -1,0 +1,15 @@
+<div class="card">
+  <h2>今日のアドバイス <span class="pill">{{ advice.level }}</span></h2>
+
+  <div style="font-weight:700; margin-bottom:8px;">
+    {{ advice.title }}
+  </div>
+
+  <ul style="margin:0; padding-left:18px;">
+    {% for b in advice.bullets %}
+      <li style="margin:6px 0;">{{ b }}</li>
+    {% endfor %}
+  </ul>
+
+  <div class="hint">※ 数値のみから自動生成。最終判断はご自身で 🙏</div>
+</div>
