@@ -1,9 +1,10 @@
-from datetime import date
+from datetime import date, timedelta
 from sqlalchemy.orm import Session
 from .models import Subscription
 from .schemas import SubscriptionCreate
 from .models import CashflowEvent, Account, Plan
 from sqlalchemy import and_
+from sqlalchemy import func
 
 def list_subscriptions(db: Session) -> list[Subscription]:
     return db.query(Subscription).order_by(Subscription.billing_day, Subscription.id).all()
@@ -126,3 +127,36 @@ def list_events_between_with_plan(db: Session, user_id: int, start, end):
             }
         )
     return rows
+
+def list_withdraw_schedule(
+    db: Session,
+    user_id: int,
+    start: date,
+    days: int = 60,
+) -> list[dict]:
+    """
+    将来のカード引落（source='card'）を日付ごとに合算して返す。
+    amount_yen は通常マイナス（口座から出ていく）想定。
+    """
+    end = start + timedelta(days=days)
+
+    rows = (
+        db.query(CashflowEvent.date, func.sum(CashflowEvent.amount_yen))
+        .filter(CashflowEvent.user_id == user_id)
+        .filter(CashflowEvent.source == "card")
+        .filter(CashflowEvent.date >= start)
+        .filter(CashflowEvent.date <= end)
+        .group_by(CashflowEvent.date)
+        .order_by(CashflowEvent.date.asc())
+        .all()
+    )
+
+    out: list[dict] = []
+    for d, total in rows:
+        out.append(
+            {
+                "date": d.isoformat(),
+                "amount_yen": int(total or 0),
+            }
+        )
+    return out

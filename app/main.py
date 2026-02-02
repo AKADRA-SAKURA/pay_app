@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from uuid import uuid4
 from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,6 +19,8 @@ from .models import Account, Card, CardTransaction, CashflowEvent
 from .crud import list_accounts, create_account
 from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
 from .services.forecast import forecast_free_daily
+from app.advice.service import get_today_advice
+from app.utils.dates import month_range
 
 # 起動時にテーブル作成（簡易版）
 Base.metadata.create_all(bind=engine)
@@ -214,6 +219,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "oneoffs": oneoffs,
             "transfers": transfers,
             "card_charges": card_charges,
+            "advice": get_today_advice(db, user_id=1),
         },
     )
 
@@ -299,13 +305,6 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
         db.delete(acc)
         db.commit()
     return RedirectResponse(url="/", status_code=303)
-
-
-def month_range(d: date):
-    first = d.replace(day=1)
-    last_day = calendar.monthrange(d.year, d.month)[1]
-    last = d.replace(day=last_day)
-    return first, last
 
 
 @app.post("/events/rebuild")

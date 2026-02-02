@@ -2,8 +2,14 @@
 
 {% block content %}
 
-  <!-- 最上段：現在状況 -->
-  {% include "partials/_hero.html" %}
+  <!-- 最上段：予測 -->
+  <section class="section">
+    <h3 class="section-title">予測・サマリ</h3>
+    <div class="grid">
+      {% include "partials/_hero.html" %}
+      {% include "partials/_advice.html" %}
+    </div>
+  </section>
 
   <!-- 上：現在状況 -->
   <section class="section">

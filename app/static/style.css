@@ -232,6 +232,25 @@ h1 {
   width: 100% !important;
 }
 
+.advice-list {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.advice-info {
+  border-left: 4px solid rgba(47, 183, 167, 0.45);
+}
+
+.advice-warn {
+  border-left: 4px solid rgba(245, 158, 11, 0.55);
+}
+
+.advice-danger {
+  border-left: 4px solid rgba(239, 68, 68, 0.65);
+}
+
 /* mobile */
 @media (max-width: 640px) {
   .hero {
