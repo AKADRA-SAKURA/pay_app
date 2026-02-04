@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.models import Card, CardTransaction, CardStatement, CashflowEvent
+from app.utils.dates import resolve_day_in_month, last_day_of_month
 
 
 def _last_day_of_month(y: int, m: int) -> int:
@@ -13,7 +14,7 @@ def _last_day_of_month(y: int, m: int) -> int:
 
 
 def _clamp_day(y: int, m: int, d: int) -> date:
-    return date(y, m, min(d, _last_day_of_month(y, m)))
+    return resolve_day_in_month(y, m, d)
 
 
 def _add_months(y: int, m: int, delta: int) -> tuple[int, int]:
@@ -57,7 +58,7 @@ def upsert_statements_and_events_for_months(
     ranges = []
     for y, m in withdraw_months:
         start = date(y, m, 1)
-        end = date(y, m, _last_day_of_month(y, m))
+        end = date(y, m, last_day_of_month(y, m))
         ranges.append((start, end))
 
     for start, end in ranges:

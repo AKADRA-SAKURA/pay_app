@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session, joinedload
 from datetime import date, datetime
 import calendar
 import re
-from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 
+from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
@@ -21,7 +21,6 @@ from app.services.forecast import forecast_by_account_events, forecast_by_accoun
 from .services.forecast import forecast_free_daily
 from app.advice.service import get_today_advice
 from app.utils.dates import month_range
-from app.routers.imports import register_import_routes
 
 # 起動時にテーブル作成（簡易版）
 Base.metadata.create_all(bind=engine)
@@ -30,7 +29,6 @@ app = FastAPI(title="期限・固定費マネージャ（ローカル）")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
-register_import_routes(app, templates)
 
 
 @app.get("/", response_class=HTMLResponse)
