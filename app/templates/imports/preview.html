@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1>取り込みプレビュー</h1>
+
+<div class="card">
+  <div>Batch #{{ batch.id }} / {{ batch.file_name or "-" }}</div>
+  <div style="opacity:.8;">new: {{ new_count }} / committed: {{ committed_count }}</div>
+</div>
+
+<form action="/imports/{{ batch.id }}/commit" method="post" class="card" style="margin-top:12px;">
+  <button type="submit">チェックした明細を確定取り込み</button>
+
+  <table style="width:100%; margin-top:12px;">
+    <thead>
+      <tr>
+        <th></th>
+        <th>利用日</th>
+        <th>金額</th>
+        <th>利用先</th>
+        <th>状態</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in txns %}
+      <tr>
+        <td>
+          {% if t.state != "committed" %}
+            <input type="checkbox" name="take_{{ t.id }}" checked />
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td>{{ t.occurred_on }}</td>
+        <td>{{ t.amount_yen }}</td>
+        <td>{{ t.merchant }}</td>
+        <td>{{ t.state }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</form>
+{% endblock %}
