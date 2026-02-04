@@ -6,14 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Plan, CashflowEvent, Card, CardTransaction, CardStatement
-
-
-def _last_day_of_month(y: int, m: int) -> int:
-    return calendar.monthrange(y, m)[1]
-
-
-def _clamp_day(y: int, m: int, d: int) -> int:
-    return min(d, _last_day_of_month(y, m))
+from app.utils.dates import resolve_day_in_month, apply_business_day_rule
 
 
 def _month_add(y: int, m: int, add: int) -> tuple[int, int]:
@@ -64,8 +57,14 @@ def build_month_events(db: Session, user_id: int, month_first: date) -> list[Cas
         if not should_create:
             continue
 
-        d = _clamp_day(y, m, p.day or 1)
-        ev_date = date(y, m, d)
+        desired = p.day or 1
+        ev_date = resolve_day_in_month(y, m, desired)
+
+        # 土日補正：incomeは前倒し、支出は後ろ倒し
+        ev_date = apply_business_day_rule(
+            ev_date,
+            cashflow_type="income" if p.type == "income" else "expense",
+        )
 
         # amount: incomeは+、subscription(支出)は-
         amount = int(p.amount_yen or 0)
@@ -115,7 +114,7 @@ def rebuild_events(db: Session, user_id: int) -> None:
 
 
 def _clamp_date(y: int, m: int, d: int) -> date:
-    return date(y, m, _clamp_day(y, m, d))
+    return resolve_day_in_month(y, m, d)
 
 
 def _add_months(y: int, m: int, add: int) -> tuple[int, int]:
@@ -132,6 +131,8 @@ def card_period_for_withdraw_month(card: Card, withdraw_y: int, withdraw_m: int)
 
     period_start = prev_period_end + timedelta(days=1)
     withdraw_date = _clamp_date(withdraw_y, withdraw_m, card.payment_day)
+    withdraw_date = apply_business_day_rule(withdraw_date, cashflow_type="expense")
+
     return period_start, period_end, withdraw_date
 
 

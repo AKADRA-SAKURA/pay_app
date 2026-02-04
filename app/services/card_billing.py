@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.models import Card, CardTransaction, CardStatement, CashflowEvent
-from app.utils.dates import resolve_day_in_month, last_day_of_month
+from app.utils.dates import resolve_day_in_month, last_day_of_month, apply_business_day_rule
 
 
 def _last_day_of_month(y: int, m: int) -> int:
@@ -37,6 +37,7 @@ def compute_period_for_withdraw_month(card: Card, withdraw_y: int, withdraw_m: i
     period_start = prev_period_end + timedelta(days=1)
 
     withdraw_date = _clamp_day(withdraw_y, withdraw_m, card.payment_day)
+    withdraw_date = apply_business_day_rule(withdraw_date, cashflow_type="expense")
     return period_start, period_end, withdraw_date
 
 
@@ -52,21 +53,20 @@ def upsert_statements_and_events_for_months(
     """
     cards = db.query(Card).all()
 
-    # 既存の card 引落イベントを対象月分だけ消す（再生成のため）
-    # ここでは「引落日が対象の月」の範囲を作って削除
-    # 例：2026-01, 2026-02 の引落イベントを削除
-    ranges = []
-    for y, m in withdraw_months:
-        start = date(y, m, 1)
-        end = date(y, m, last_day_of_month(y, m))
-        ranges.append((start, end))
+    # 既存の card 引落イベントを「算出された withdraw_date」単位で消す
+    # 休日後ろ倒しで翌月にずれても確実に消せる
+    withdraw_dates_to_delete: set[date] = set()
 
-    for start, end in ranges:
+    for card in cards:
+        for y, m in withdraw_months:
+            _, _, wd = compute_period_for_withdraw_month(card, y, m)
+            withdraw_dates_to_delete.add(wd)
+
+    if withdraw_dates_to_delete:
         db.query(CashflowEvent).filter(
             CashflowEvent.user_id == user_id,
             CashflowEvent.source == "card",
-            CashflowEvent.date >= start,
-            CashflowEvent.date <= end,
+            CashflowEvent.date.in_(sorted(withdraw_dates_to_delete)),
         ).delete(synchronize_session=False)
 
     for card in cards:
