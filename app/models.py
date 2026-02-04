@@ -1,5 +1,6 @@
 from datetime import date
-from sqlalchemy import Integer, String, Date, Column, ForeignKey, UniqueConstraint
+from sqlalchemy import Integer, String, Date, Column, ForeignKey, UniqueConstraint, DateTime, Text
+from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
@@ -129,3 +130,43 @@ class CardStatement(Base):
     withdraw_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     card = relationship("Card", back_populates="statements")
+
+
+class ImportBatch(Base):
+    __tablename__ = "import_batches"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    source = Column(String(50), nullable=False)      # 例: "csv_card"
+    file_name = Column(String(255), nullable=True)
+
+    # 任意：取り込むカードをバッチ単位で指定（MVPでは便利）
+    card_id = Column(Integer, ForeignKey("cards.id"), nullable=True)
+
+    status = Column(String(20), default="new", nullable=False)  # new/preview/committed
+
+    transactions = relationship("ImportedTransaction", back_populates="batch", cascade="all, delete-orphan")
+
+
+class ImportedTransaction(Base):
+    __tablename__ = "imported_transactions"
+    __table_args__ = (
+        UniqueConstraint("fingerprint", name="uq_imported_transactions_fingerprint"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    batch_id = Column(Integer, ForeignKey("import_batches.id"), nullable=False)
+
+    occurred_on = Column(Date, nullable=False)  # 利用日
+    amount_yen = Column(Integer, nullable=False)  # 支出はマイナスで統一（推奨）
+    merchant = Column(String(255), nullable=False, default="")
+    memo = Column(String(255), nullable=False, default="")
+
+    fingerprint = Column(String(64), nullable=False)  # sha256 hex
+    raw = Column(Text, nullable=True)  # 元CSV行をJSON文字列などで保存
+
+    state = Column(String(20), default="new", nullable=False)  # new/skipped/committed/error
+    committed_event_id = Column(Integer, ForeignKey("cashflow_events.id"), nullable=True)
+
+    batch = relationship("ImportBatch", back_populates="transactions")

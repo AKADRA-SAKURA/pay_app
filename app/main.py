@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session, joinedload
 from datetime import date, datetime
 import calendar
 import re
-from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 
+from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
