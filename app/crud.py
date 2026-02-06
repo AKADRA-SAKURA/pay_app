@@ -31,8 +31,8 @@ def delete_subscription(db: Session, sub_id: int) -> None:
 def list_accounts(db):
     return db.query(Account).order_by(Account.id).all()
 
-def create_account(db, name: str, balance_yen: int):
-    acc = Account(name=name, balance_yen=balance_yen)
+def create_account(db, name: str, balance_yen: int, kind: str = "bank"):
+    acc = Account(name=name, balance_yen=balance_yen, kind=kind)
     db.add(acc)
     db.commit()
     db.refresh(acc)

@@ -36,19 +36,37 @@
           <th style="width: 70px">ID</th>
           <th>口座名</th>
           <th style="width: 160px">残高</th>
-          <th style="width: 100px"></th>
+          <th style="width: 120px">Kind</th>
+          <th style="width: 160px"></th>
         </tr>
       </thead>
       <tbody>
         {% for a in accounts %}
-        <tr>
+        <tr data-edit-row>
           <td>{{ a.id }}</td>
-          <td style="font-weight: 650">{{ a.name }}</td>
-          <td class="money">{{ "{:,}".format(a.balance_yen) }} 円</td>
-          <td >{{ a.kind }}</td>
           <td>
-            <form method="post" action="/accounts/{{ a.id }}/delete" style="margin: 0">
-              <button class="btn btn-danger" type="submit">削除</button>
+            <input class="edit-input" name="name" value="{{ a.name }}" form="acc-{{ a.id }}" required />
+          </td>
+          <td class="money">
+            <input class="edit-input" name="balance_yen" type="number" min="0" value="{{ a.balance_yen }}" form="acc-{{ a.id }}" required />
+          </td>
+          <td>
+            <select class="edit-input" name="kind" form="acc-{{ a.id }}" required>
+              <option value="bank" {% if a.kind == "bank" %}selected{% endif %}>bank</option>
+              <option value="cash" {% if a.kind == "cash" %}selected{% endif %}>cash</option>
+              <option value="barcode" {% if a.kind == "barcode" %}selected{% endif %}>barcode</option>
+              <option value="emoney" {% if a.kind == "emoney" %}selected{% endif %}>emoney</option>
+              <option value="nisa" {% if a.kind == "nisa" %}selected{% endif %}>nisa</option>
+            </select>
+          </td>
+          <td class="edit-actions">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">Edit</button>
+            <form id="acc-{{ a.id }}" method="post" action="/accounts/{{ a.id }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">Save</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">Cancel</button>
+            <form method="post" action="/accounts/{{ a.id }}/delete" style="margin:0; display:inline;">
+              <button class="btn btn-danger" type="submit">Delete</button>
             </form>
           </td>
         </tr>
@@ -56,7 +74,7 @@
 
         {% if not accounts %}
         <tr>
-          <td colspan="4" class="empty">
+          <td colspan="5" class="empty">
             まだ口座がありません（先に1つ作るのがおすすめ）
           </td>
         </tr>

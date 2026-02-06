@@ -15,7 +15,7 @@ from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
-from .models import Account, Card, CardTransaction, CashflowEvent
+from .models import Account, Card, CardTransaction, CashflowEvent, Subscription, Plan
 from .crud import list_accounts, create_account
 from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
 from .services.forecast import forecast_free_daily
@@ -160,6 +160,8 @@ def page_index(request: Request, db: Session = Depends(get_db)):
                 "date": ev_to.date,
                 "method": method,
                 "amount_yen": amt,
+                "from_id": int(ev_from.account_id),
+                "to_id": int(ev_to.account_id),
                 "from_label": acc_label.get(int(ev_from.account_id), f"ID:{ev_from.account_id}"),
                 "to_label": acc_label.get(int(ev_to.account_id), f"ID:{ev_to.account_id}"),
             }
@@ -194,7 +196,9 @@ def page_index(request: Request, db: Session = Depends(get_db)):
                 "id": tx.id,
                 "date": tx.date,
                 "amount_yen": int(tx.amount_yen),
+                "card_id": int(tx.card_id) if tx.card_id else None,
                 "card_name": tx.card.name if tx.card else "-",
+                "to_account_id": to_id,
                 "to_label": acc_label.get(to_id, f"ID:{to_id}" if to_id else "-"),
             }
         )
@@ -244,6 +248,23 @@ def create_subscription(
 
 
 # 画面フォーム: 削除
+@app.post("/subscriptions/{sub_id}/update")
+def update_subscription(
+    sub_id: int,
+    name: str = Form(...),
+    amount_yen: int = Form(...),
+    billing_day: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
+    if sub:
+        sub.name = name
+        sub.amount_yen = int(amount_yen)
+        sub.billing_day = int(billing_day)
+        db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.post("/subscriptions/{sub_id}/delete")
 def delete_subscription(sub_id: int, db: Session = Depends(get_db)):
     crud.delete_subscription(db, sub_id)
@@ -254,9 +275,10 @@ def delete_subscription(sub_id: int, db: Session = Depends(get_db)):
 def add_account(
     name: str = Form(...),
     balance_yen: int = Form(...),
+    kind: str = Form("bank"),
     db: Session = Depends(get_db),
 ):
-    create_account(db, name=name, balance_yen=balance_yen)
+    create_account(db, name=name, balance_yen=balance_yen, kind=kind)
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -297,6 +319,23 @@ def add_plan(
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/accounts/{account_id}/update")
+def update_account(
+    account_id: int,
+    name: str = Form(...),
+    balance_yen: int = Form(...),
+    kind: str = Form("bank"),
+    db: Session = Depends(get_db),
+):
+    acc = db.query(Account).filter(Account.id == account_id).first()
+    if acc:
+        acc.name = name
+        acc.balance_yen = int(balance_yen)
+        acc.kind = kind
+        db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.post("/accounts/{account_id}/delete")
 def delete_account(account_id: int, db: Session = Depends(get_db)):
     # 超簡易：存在したら削除
@@ -311,6 +350,36 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
 def rebuild_events(db: Session = Depends(get_db)):
     rebuild_events_scheduler(db, user_id=1)
     return RedirectResponse(url="/", status_code=303)
+
+@app.post("/plans/{plan_id}/update")
+def update_plan(
+    plan_id: int,
+    type: str = Form(...),
+    title: str = Form(...),
+    amount_yen: int = Form(...),
+    account_id: int = Form(...),
+    freq: str = Form(...),
+    day: int = Form(1),
+    interval_months: int = Form(1),
+    start_date: str | None = Form(default=None),
+    month: int = Form(1),
+    db: Session = Depends(get_db),
+):
+    p = db.query(Plan).filter(Plan.id == plan_id, Plan.user_id == 1).first()
+    if p:
+        p.type = type
+        p.title = title
+        p.amount_yen = int(amount_yen)
+        p.account_id = int(account_id)
+        p.freq = freq
+        p.day = int(day)
+        p.interval_months = int(interval_months)
+        p.month = int(month)
+        if start_date:
+            p.start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+        db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
 
 @app.post("/plans/{plan_id}/delete")
 def delete_plan(plan_id: int, db: Session = Depends(get_db)):
@@ -357,6 +426,25 @@ def create_card(
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/cards/{card_id}/update")
+def update_card(
+    card_id: int,
+    name: str = Form(...),
+    closing_day: int = Form(...),
+    payment_day: int = Form(...),
+    payment_account_id: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Card).filter(Card.id == card_id).first()
+    if c:
+        c.name = name
+        c.closing_day = int(closing_day)
+        c.payment_day = int(payment_day)
+        c.payment_account_id = int(payment_account_id)
+        db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.post("/cards/{card_id}/delete")
 def delete_card(card_id: int, db: Session = Depends(get_db)):
     db.query(Card).filter(Card.id == card_id).delete(synchronize_session=False)
@@ -391,6 +479,25 @@ def create_card_transaction(
     finally:
         db.close()
 
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-transactions/{tx_id}/update")
+def update_card_transaction(
+    tx_id: int,
+    card_id: int = Form(...),
+    date_: date = Form(..., alias="date"),
+    amount_yen: int = Form(...),
+    merchant: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    t = db.query(CardTransaction).filter(CardTransaction.id == tx_id).first()
+    if t:
+        t.card_id = int(card_id)
+        t.date = date_
+        t.amount_yen = int(amount_yen)
+        t.merchant = merchant or None
+        db.commit()
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -433,6 +540,34 @@ def create_oneoff(
     )
     db.add(ev)
     db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/oneoff/{event_id}/update")
+def update_oneoff(
+    event_id: int,
+    date_: date = Form(..., alias="date"),
+    account_id: int = Form(...),
+    amount_yen: int = Form(...),
+    direction: str = Form(...),
+    description: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    ev = db.query(CashflowEvent).filter(
+        CashflowEvent.id == event_id,
+        CashflowEvent.source == "oneoff",
+    ).first()
+    if ev:
+        amt = int(amount_yen)
+        if direction == "expense":
+            amt = -abs(amt)
+        else:
+            amt = abs(amt)
+        ev.date = date_
+        ev.account_id = int(account_id)
+        ev.amount_yen = amt
+        ev.description = description
+        db.commit()
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -508,6 +643,42 @@ def create_transfer(
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/transfer/{transfer_id}/update")
+def update_transfer(
+    transfer_id: str,
+    date_: date = Form(..., alias="date"),
+    from_account_id: int = Form(...),
+    to_account_id: int = Form(...),
+    amount_yen: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    evs = (
+        db.query(CashflowEvent)
+        .filter(CashflowEvent.user_id == 1)
+        .filter(CashflowEvent.source == "transfer")
+        .filter(CashflowEvent.transfer_id == transfer_id)
+        .all()
+    )
+    if not evs:
+        return RedirectResponse(url="/", status_code=303)
+
+    ev_from = next((x for x in evs if int(x.amount_yen) < 0), None)
+    ev_to = next((x for x in evs if int(x.amount_yen) > 0), None)
+    amt = abs(int(amount_yen))
+
+    if ev_to:
+        ev_to.date = date_
+        ev_to.account_id = int(to_account_id)
+        ev_to.amount_yen = amt
+    if ev_from:
+        ev_from.date = date_
+        ev_from.account_id = int(from_account_id)
+        ev_from.amount_yen = -amt
+
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.post("/transfer/{transfer_id}/delete")
 def delete_transfer(transfer_id: str, db: Session = Depends(get_db)):
     db.query(CashflowEvent).filter(
@@ -516,6 +687,25 @@ def delete_transfer(transfer_id: str, db: Session = Depends(get_db)):
         CashflowEvent.transfer_id == transfer_id,
     ).delete(synchronize_session=False)
     db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card_charges/{tx_id}/update")
+def update_card_charge(
+    tx_id: int,
+    date_: date = Form(..., alias="date"),
+    amount_yen: int = Form(...),
+    card_id: int = Form(...),
+    to_account_id: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    tx = db.query(CardTransaction).filter(CardTransaction.id == tx_id).first()
+    if tx:
+        tx.date = date_
+        tx.amount_yen = int(amount_yen)
+        tx.card_id = int(card_id)
+        tx.note = f"charge to account_id={to_account_id}"
+        db.commit()
     return RedirectResponse(url="/", status_code=303)
 
 

@@ -55,25 +55,39 @@
       </thead>
       <tbody>
         {% for c in cards %}
-        <tr>
+        <tr data-edit-row>
           <td>{{ c.id }}</td>
-          <td style="font-weight:650">{{ c.name }}</td>
-          <td>{{ c.closing_day }}日</td>
-          <td>{{ c.payment_day }}日</td>
           <td>
-            {# accountsから引くのが面倒なら、今はID表示でもOK #}
-            {{ c.payment_account_id }}
+            <input class="edit-input" name="name" value="{{ c.name }}" form="card-{{ c.id }}" required />
           </td>
           <td>
-            <form method="post" action="/cards/{{ c.id }}/delete" style="margin:0;">
-              <button class="btn btn-danger" type="submit">削除</button>
+            <input class="edit-input" name="closing_day" type="number" min="1" max="31" value="{{ c.closing_day }}" form="card-{{ c.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="payment_day" type="number" min="1" max="31" value="{{ c.payment_day }}" form="card-{{ c.id }}" required />
+          </td>
+          <td>
+            <select class="edit-input" name="payment_account_id" form="card-{{ c.id }}" required>
+              {% for a in accounts %}
+                <option value="{{ a.id }}" {% if a.id == c.payment_account_id %}selected{% endif %}>{{ a.name }} (ID:{{ a.id }})</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="edit-actions">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">Edit</button>
+            <form id="card-{{ c.id }}" method="post" action="/cards/{{ c.id }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">Save</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">Cancel</button>
+            <form method="post" action="/cards/{{ c.id }}/delete" style="margin:0; display:inline;">
+              <button class="btn btn-danger" type="submit">Delete</button>
             </form>
           </td>
         </tr>
         {% endfor %}
 
         {% if not cards %}
-        <tr><td colspan="6" class="empty">まだカードがありません</td></tr>
+        <tr><td colspan="6" class="empty">No cards yet</td></tr>
         {% endif %}
       </tbody>
     </table>

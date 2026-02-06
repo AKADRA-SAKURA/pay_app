@@ -527,3 +527,36 @@ tbody tr:last-child td {
     width: 100%;
   }
 }
+
+
+/* ===== Inline Edit ===== */
+[data-edit-row] .edit-input {
+  display: none;
+}
+
+[data-edit-row][data-editing="1"] .edit-input {
+  display: inline-block;
+}
+
+[data-edit-row] .edit-actions .save-btn,
+[data-edit-row] .edit-actions .cancel-btn {
+  display: none;
+}
+
+[data-edit-row][data-editing="1"] .edit-actions .save-btn,
+[data-edit-row][data-editing="1"] .edit-actions .cancel-btn {
+  display: inline-block;
+}
+
+[data-edit-row][data-editing="1"] .edit-actions .edit-btn {
+  display: none;
+}
+
+.edit-view {
+  display: inline-block;
+  margin-right: 6px;
+}
+
+[data-edit-row][data-editing="1"] .edit-view {
+  display: none;
+}

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import time
 from typing import Any, Dict, Literal
@@ -58,15 +59,24 @@ def _get_client() -> OpenAI:
         raise RuntimeError("OPENAI_API_KEY is not set")
     return OpenAI(api_key=api_key)
 
+def _parse_json_text(text: str) -> dict:
+    try:
+        return json.loads(text)
+    except Exception:
+        m = re.search(r"\{[\s\S]*\}", text)
+        if not m:
+            raise
+        return json.loads(m.group(0))
+
 def _extract_json(resp: Any) -> dict:
     # SDK差分吸収
     out_text = getattr(resp, "output_text", None)
     if out_text:
-        return json.loads(out_text)
+        return _parse_json_text(out_text)
 
     raw = resp.model_dump()
     text = raw.get("output_text") or ""
-    return json.loads(text)
+    return _parse_json_text(text)
 
 def generate_advice_openai(context: Dict[str, Any], *, max_retries: int = 2) -> Dict[str, Any]:
     """
@@ -109,8 +119,26 @@ def generate_advice_openai(context: Dict[str, Any], *, max_retries: int = 2) -> 
             )
             return _extract_json(resp)
 
+        except TypeError as e:
+            if "response_format" not in str(e):
+                last_err = e
+                time.sleep(0.4 * (attempt + 1))
+                continue
+            try:
+                resp = client.responses.create(
+                    model="gpt-4.1-mini",
+                    input=[
+                        {"role": "system", "content": system_instructions + "\n?????JSON???"},
+                        {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
+                    ],
+                )
+                return _extract_json(resp)
+            except Exception as e2:
+                last_err = e2
+                time.sleep(0.4 * (attempt + 1))
+
         except Exception as e:
             last_err = e
-            time.sleep(0.4 * (attempt + 1))  # かんたんバックオフ
+            time.sleep(0.4 * (attempt + 1))
 
     raise last_err

@@ -72,15 +72,26 @@
 
         <tbody>
         {% for s in subs %}
-        <tr>
+        <tr data-edit-row>
             <td>{{ s.id }}</td>
-            <td style="font-weight: 650">{{ s.name }}</td>
-            <td class="money">{{ "{:,}".format(s.amount_yen) }} 円</td>
-            <td><span class="pill">毎月 {{ s.billing_day }} 日</span></td>
             <td>
-            <form method="post" action="/subscriptions/{{ s.id }}/delete" style="margin: 0">
-                <button class="btn btn-danger" type="submit">削除</button>
-            </form>
+              <input class="edit-input" name="name" value="{{ s.name }}" form="sub-{{ s.id }}" required />
+            </td>
+            <td class="money">
+              <input class="edit-input" name="amount_yen" type="number" min="0" value="{{ s.amount_yen }}" form="sub-{{ s.id }}" required />
+            </td>
+            <td>
+              <input class="edit-input" name="billing_day" type="number" min="1" max="31" value="{{ s.billing_day }}" form="sub-{{ s.id }}" required />
+            </td>
+            <td class="edit-actions">
+              <button class="btn btn-ghost edit-btn" type="button" data-edit="start">Edit</button>
+              <form id="sub-{{ s.id }}" method="post" action="/subscriptions/{{ s.id }}/update" style="margin:0; display:inline;">
+                <button class="btn save-btn" type="submit">Save</button>
+              </form>
+              <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">Cancel</button>
+              <form method="post" action="/subscriptions/{{ s.id }}/delete" style="margin:0; display:inline;">
+                <button class="btn btn-danger" type="submit">Delete</button>
+              </form>
             </td>
         </tr>
         {% endfor %}
