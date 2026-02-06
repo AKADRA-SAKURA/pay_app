@@ -1,64 +1,92 @@
-<!-- 口座 -->
+﻿<!-- 口座登録（オーバーレイ） -->
+
+<div id="account-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>登録口座 <span class="pill">計算の起点</span></h2>
+
+    <form method="post" action="/accounts" class="form">
+      <label>
+        口座名
+        <input name="name" placeholder="生活口座 / 楽天銀行" required />
+      </label>
+
+      <label>
+        現在残高（円）
+        <input name="balance_yen" type="number" min="0" value="0" required />
+      </label>
+
+      <label>
+        種類
+        <select name="kind" required>
+          <option value="bank">口座</option>
+          <option value="cash">現金</option>
+          <option value="barcode">バーコード決済</option>
+          <option value="emoney">電子マネー</option>
+          <option value="nisa">NISA</option>
+        </select>
+      </label>
+
+      <div class="actions col-span-all">
+        <button class="btn" type="submit">口座を追加する</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 口座一覧 -->
+
 <div class="card">
-  <h2>口座 <span class="pill">計算の起点</span></h2>
+  <div class="card-head">
+    <h2>口座一覧</h2>
+    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="account-form-template">＋ 追加</button>
+  </div>
 
-  <form method="post" action="/accounts" class="form">
-    <label>
-      口座名
-      <input name="name" placeholder="生活口座 / 楽天銀行" required />
-    </label>
-
-    <label>
-      現在残高（円）
-      <input name="balance_yen" type="number" min="0" value="0" required />
-    </label>
-
-    <label>
-    種類
-    <select name="kind" required>
-        <option value="bank">口座</option>
-        <option value="cash">現金</option>
-        <option value="barcode">バーコード決済残高</option>
-        <option value="emoney">電子マネー残高</option>
-        <option value="nisa">NISA</option>
-    </select>
-    </label>
-
-    <div class="actions col-span-all">
-      <button class="btn" type="submit">口座を追加する</button>
-    </div>
-  </form>
-
-  <div style="margin-top: 12px">
+  <div class="table-wrap">
     <table>
       <thead>
         <tr>
+          <th class="sticky-col" style="width: 140px">操作</th>
           <th style="width: 70px">ID</th>
           <th>口座名</th>
-          <th style="width: 160px">残高</th>
-          <th style="width: 100px"></th>
+          <th style="width: 160px">現在残高</th>
+          <th style="width: 120px">種類</th>
         </tr>
       </thead>
       <tbody>
         {% for a in accounts %}
-        <tr>
-          <td>{{ a.id }}</td>
-          <td style="font-weight: 650">{{ a.name }}</td>
-          <td class="money">{{ "{:,}".format(a.balance_yen) }} 円</td>
-          <td >{{ a.kind }}</td>
-          <td>
-            <form method="post" action="/accounts/{{ a.id }}/delete" style="margin: 0">
+        <tr data-edit-row>
+          <td class="edit-actions sticky-col">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
+            <form id="acc-{{ a.id }}" method="post" action="/accounts/{{ a.id }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">保存</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">キャンセル</button>
+            <form method="post" action="/accounts/{{ a.id }}/delete" style="margin:0; display:inline;">
               <button class="btn btn-danger" type="submit">削除</button>
             </form>
+          </td>
+          <td>{{ a.id }}</td>
+          <td>
+            <input class="edit-input" name="name" value="{{ a.name }}" form="acc-{{ a.id }}" required />
+          </td>
+          <td class="money">
+            <input class="edit-input" name="balance_yen" type="number" min="0" value="{{ a.balance_yen }}" form="acc-{{ a.id }}" required />
+          </td>
+          <td>
+            <select class="edit-input" name="kind" form="acc-{{ a.id }}" required>
+              <option value="bank" {% if a.kind == "bank" %}selected{% endif %}>口座</option>
+              <option value="cash" {% if a.kind == "cash" %}selected{% endif %}>現金</option>
+              <option value="barcode" {% if a.kind == "barcode" %}selected{% endif %}>バーコード決済</option>
+              <option value="emoney" {% if a.kind == "emoney" %}selected{% endif %}>電子マネー</option>
+              <option value="nisa" {% if a.kind == "nisa" %}selected{% endif %}>NISA</option>
+            </select>
           </td>
         </tr>
         {% endfor %}
 
         {% if not accounts %}
         <tr>
-          <td colspan="4" class="empty">
-            まだ口座がありません（先に1つ作るのがおすすめ）
-          </td>
+          <td colspan="5" class="empty">口座がありません。まず1つ追加してください。</td>
         </tr>
         {% endif %}
       </tbody>

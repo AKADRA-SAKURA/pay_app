@@ -1,4 +1,4 @@
-<div class="hero">
+﻿<div class="hero">
   <div class="hero-main">
     <div class="hero-label">今月の自由に使えるお金</div>
     <div class="hero-amount">
@@ -10,13 +10,24 @@
   </div>
 
   <div class="hero-side">
-    <div class="hero-card">
-      <div class="hero-label small">来月末の見込み</div>
-      <div class="hero-amount small">
-        {{ "{:,}".format(free_next) }} <span class="yen">円</span>
+    <div class="hero-stack">
+      <div class="hero-card">
+        <div class="hero-label small">来月末の見込み</div>
+        <div class="hero-amount small">
+          {{ "{:,}".format(free_next) }} <span class="yen">円</span>
+        </div>
+        <div class="hero-sub">
+          {{ next_range[0] }} 〜 {{ next_range[1] }}
+        </div>
       </div>
-      <div class="hero-sub">
-        {{ next_range[0] }} 〜 {{ next_range[1] }}
+      <div class="hero-card">
+        <div class="hero-label small">再来月末の見込み</div>
+        <div class="hero-amount small">
+          {{ "{:,}".format(free_next2) }} <span class="yen">円</span>
+        </div>
+        <div class="hero-sub">
+          {{ next2_range[0] }} 〜 {{ next2_range[1] }}
+        </div>
       </div>
     </div>
   </div>

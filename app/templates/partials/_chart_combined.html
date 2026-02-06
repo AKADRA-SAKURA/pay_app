@@ -1,0 +1,15 @@
+﻿<div class="card col-span-all">
+  <h2>予測の推移 <span class="pill">Chart.js</span></h2>
+
+  <div class="hint" style="margin-bottom: 10px;">
+    ※ 総資産と自由に使えるお金を同じグラフで表示しています。
+  </div>
+
+  <div class="chart-wrap">
+    <canvas id="combinedChart"></canvas>
+  </div>
+
+  <script id="totalSeriesData" type="application/json">
+    {{ (forecast["total_series"] if forecast else []) | tojson }}
+  </script>
+</div>

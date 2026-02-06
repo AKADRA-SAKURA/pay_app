@@ -15,6 +15,12 @@ def create_subscription(db: Session, data: SubscriptionCreate) -> Subscription:
         name=data.name,
         amount_yen=data.amount_yen,
         billing_day=data.billing_day,
+        freq=data.freq,
+        interval_months=data.interval_months,
+        billing_month=data.billing_month,
+        payment_method=data.payment_method,
+        account_id=data.account_id,
+        card_id=data.card_id,
     )
     db.add(sub)
     db.commit()
@@ -31,8 +37,8 @@ def delete_subscription(db: Session, sub_id: int) -> None:
 def list_accounts(db):
     return db.query(Account).order_by(Account.id).all()
 
-def create_account(db, name: str, balance_yen: int):
-    acc = Account(name=name, balance_yen=balance_yen)
+def create_account(db, name: str, balance_yen: int, kind: str = "bank"):
+    acc = Account(name=name, balance_yen=balance_yen, kind=kind)
     db.add(acc)
     db.commit()
     db.refresh(acc)
@@ -58,6 +64,9 @@ def create_plan(
     month,
     start_date=None,
     user_id=1,
+    payment_method="bank",
+    card_id=None,
+    end_date=None,
 ):
     p = Plan(
         user_id=user_id,
@@ -70,6 +79,9 @@ def create_plan(
         interval_months=interval_months,
         month=month,
         start_date=start_date,
+        payment_method=payment_method,
+        card_id=card_id,
+        end_date=end_date,
     )
     db.add(p)
     db.commit()

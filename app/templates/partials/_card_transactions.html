@@ -1,80 +1,106 @@
-<div class="card">
-  <h2>カード決済入力 <span class="pill">フェーズ1</span></h2>
+﻿<!-- カード取引登録（オーバーレイ） -->
 
-  {% if not cards %}
-    <div class="hint">※ 先に「カード管理」でカードを作ってね。</div>
-  {% endif %}
+<div id="card-transaction-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>カード取引登録 <span class="pill">フェーズ1</span></h2>
 
-  <form method="post" action="/card-transactions" class="form">
-    <label class="col-span-all">
-      日付
-      <input name="date" type="date" required />
-    </label>
+    {% if not cards %}
+      <div class="hint">※ 先にカードを追加してください。</div>
+    {% endif %}
 
-    <label class="col-span-all">
-      店名（任意）
-      <input name="merchant" placeholder="スーパー / Amazon" />
-    </label>
+    <form method="post" action="/card-transactions" class="form">
+      <label class="col-span-all">
+        日付
+        <input name="date" type="date" required />
+      </label>
 
-    <label>
-      金額（円）
-      <input name="amount_yen" type="number" min="0" value="0" required />
-    </label>
+      <label class="col-span-all">
+        加盟店（任意）
+        <input name="merchant" placeholder="スーパー / Amazon" />
+      </label>
 
-    <label>
-      カード
-      <select name="card_id" required>
-        {% for c in cards %}
-          <option value="{{ c.id }}">{{ c.name }}（ID:{{ c.id }}）</option>
-        {% endfor %}
-      </select>
-    </label>
+      <label>
+        金額（円）
+        <input name="amount_yen" type="number" min="0" value="0" required />
+      </label>
 
-    <div class="actions col-span-all">
-      {% if not cards %}
-        <button class="btn" type="submit" disabled style="opacity:.5;cursor:not-allowed;">追加</button>
-      {% else %}
-        <button class="btn" type="submit">追加</button>
-      {% endif %}
-    </div>
-  </form>
-
-  <div class="mt-14">
-    <h2>決済一覧 <span class="pill">最新</span></h2>
-
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:90px;">ID</th>
-            <th style="width:140px;">日付</th>
-            <th>店名</th>
-            <th style="width:160px;">金額</th>
-            <th style="width:200px;">カード</th>
-            <th style="width:100px;"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in card_transactions %}
-          <tr>
-            <td>{{ t.id }}</td>
-            <td>{{ t.date }}</td>
-            <td>{{ t.merchant or "-" }}</td>
-            <td class="money">{{ "{:,}".format(t.amount_yen) }} 円</td>
-            <td>{{ t.card.name }}</td>
-            <td>
-              <form method="post" action="/card-transactions/{{ t.id }}/delete" style="margin:0">
-                <button class="btn btn-danger" type="submit">削除</button>
-              </form>
-            </td>
-          </tr>
+      <label>
+        カード
+        <select name="card_id" required>
+          {% for c in cards %}
+            <option value="{{ c.id }}">{{ c.name }} (ID:{{ c.id }})</option>
           {% endfor %}
+        </select>
+      </label>
 
-          {% if not card_transactions %}
-          <tr><td colspan="6" class="empty">まだ決済がありません</td></tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
+      <div class="actions col-span-all">
+        {% if not cards %}
+          <button class="btn" type="submit" disabled style="opacity:.5;cursor:not-allowed;">追加</button>
+        {% else %}
+          <button class="btn" type="submit">追加</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- カード取引一覧 -->
+
+<div class="card">
+  <div class="card-head">
+    <h2>カード取引一覧 <span class="pill">最新50件</span></h2>
+    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-transaction-form-template">＋ 追加</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:90px;">ID</th>
+          <th style="width:140px;">日付</th>
+          <th>加盟店</th>
+          <th style="width:160px;">金額</th>
+          <th style="width:200px;">カード</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in card_transactions %}
+        <tr data-edit-row>
+          <td class="edit-actions sticky-col">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
+            <form id="tx-{{ t.id }}" method="post" action="/card-transactions/{{ t.id }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">保存</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">キャンセル</button>
+            <form method="post" action="/card-transactions/{{ t.id }}/delete" style="margin:0; display:inline;">
+              <button class="btn btn-danger" type="submit">削除</button>
+            </form>
+          </td>
+          <td>{{ t.id }}</td>
+          <td>
+            <input class="edit-input" name="date" type="date" value="{{ t.date }}" form="tx-{{ t.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="merchant" value="{{ t.merchant or '' }}" form="tx-{{ t.id }}" />
+          </td>
+          <td class="money">
+            <input class="edit-input" name="amount_yen" type="number" min="0" value="{{ t.amount_yen }}" form="tx-{{ t.id }}" required />
+          </td>
+          <td>
+            <select class="edit-input" name="card_id" form="tx-{{ t.id }}" required>
+              {% for c in cards %}
+                <option value="{{ c.id }}" {% if c.id == t.card_id %}selected{% endif %}>{{ c.name }} (ID:{{ c.id }})</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if not card_transactions %}
+        <tr><td colspan="6" class="empty">取引がありません。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
   </div>
 </div>

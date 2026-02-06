@@ -1,83 +1,113 @@
-<div class="card">
-  <h2>単発支払い <span class="pill">現金・バーコード・電子マネー・デビッド</span></h2>
+﻿<!-- 一時的な収支登録（オーバーレイ） -->
 
-  <form method="post" action="/oneoff" class="form">
-    <label class="col-span-all">
-      日付
-      <input name="date" type="date" required />
-    </label>
+<div id="oneoff-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>一時的な収支登録 <span class="pill">現金 / バーコード / 電子マネー / 振替など</span></h2>
 
-    <label>
-      種別
-      <select name="direction" required>
-        <option value="expense">支出</option>
-        <option value="income">収入</option>
-      </select>
-    </label>
+    <form method="post" action="/oneoff" class="form">
+      <label class="col-span-all">
+        日付
+        <input name="date" type="date" required />
+      </label>
 
-    <label>
-      金額（円）
-      <input name="amount_yen" type="number" min="0" value="0" required />
-    </label>
+      <label>
+        種別
+        <select name="direction" required>
+          <option value="expense">支出</option>
+          <option value="income">収入</option>
+        </select>
+      </label>
 
-    <label class="col-span-all">
-      支払い元（口座/現金/PayPay/Suicaなど）
-      <select name="account_id" required>
-        {% for a in accounts %}
-          <option value="{{ a.id }}">{{ a.name }}（{{ a.kind }} / ID:{{ a.id }}）</option>
-        {% endfor %}
-      </select>
-    </label>
+      <label>
+        金額（円）
+        <input name="amount_yen" type="number" min="0" value="0" required />
+      </label>
 
-    <label class="col-span-all">
-      内容
-      <input name="description" placeholder="スーパー / 外食 / 病院" required />
-    </label>
-
-    <div class="actions col-span-all">
-      <button class="btn" type="submit">追加</button>
-    </div>
-
-    <div class="hint col-span-all">
-      ※ デビッドは「支払い元＝口座」を選べばOK（リアルタイムで口座から減る扱い）
-    </div>
-  </form>
-
-  <div class="mt-14">
-    <h2>単発履歴 <span class="pill">最新30件</span></h2>
-
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:80px;">ID</th>
-            <th style="width:140px;">日付</th>
-            <th>内容</th>
-            <th style="width:160px;">金額</th>
-            <th style="width:220px;">元アカウント</th>
-            <th style="width:100px;"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for e in oneoffs %}
-          <tr>
-            <td>{{ e.id }}</td>
-            <td>{{ e.date }}</td>
-            <td>{{ e.description or "-" }}</td>
-            <td class="money">{{ "{:,}".format(e.amount_yen) }} 円</td>
-            <td>{{ e.account_id }}</td>
-            <td>
-              <form method="post" action="/oneoff/{{ e.id }}/delete" style="margin:0;">
-                <button class="btn btn-danger" type="submit">削除</button>
-              </form>
-            </td>
-          </tr>
+      <label class="col-span-all">
+        口座（現金 / PayPay / Suica など）
+        <select name="account_id" required>
+          {% for a in accounts %}
+            <option value="{{ a.id }}">{{ a.name }} ({{ a.kind }}) / ID:{{ a.id }}</option>
           {% endfor %}
-          {% if not oneoffs %}
-          <tr><td colspan="6" class="empty">まだ単発支払いがありません</td></tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
+        </select>
+      </label>
+
+      <label class="col-span-all">
+        メモ
+        <input name="description" placeholder="スーパー / 昼食 / 交通費" required />
+      </label>
+
+      <div class="actions col-span-all">
+        <button class="btn" type="submit">追加</button>
+      </div>
+
+      <div class="hint col-span-all">
+        ※ 振替は「口座間の移動」を使うと相殺され、残高予測が整合します。
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 一時的な収支一覧 -->
+
+<div class="card">
+  <div class="card-head">
+    <h2>一時的な収支一覧 <span class="pill">最新30件</span></h2>
+    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="oneoff-form-template">＋ 追加</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:80px;">ID</th>
+          <th style="width:140px;">日付</th>
+          <th>メモ</th>
+          <th style="width:160px;">金額</th>
+          <th style="width:220px;">口座</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in oneoffs %}
+        <tr data-edit-row>
+          <td class="edit-actions sticky-col">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
+            <form id="oneoff-{{ e.id }}" method="post" action="/oneoff/{{ e.id }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">保存</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">キャンセル</button>
+            <form method="post" action="/oneoff/{{ e.id }}/delete" style="margin:0; display:inline;">
+              <button class="btn btn-danger" type="submit">削除</button>
+            </form>
+          </td>
+          <td>{{ e.id }}</td>
+          <td>
+            <input class="edit-input" name="date" type="date" value="{{ e.date }}" form="oneoff-{{ e.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="description" value="{{ e.description or '' }}" form="oneoff-{{ e.id }}" required />
+          </td>
+          <td class="money">
+            <select class="edit-input" name="direction" form="oneoff-{{ e.id }}" required>
+              <option value="expense" {% if e.amount_yen < 0 %}selected{% endif %}>支出</option>
+              <option value="income" {% if e.amount_yen >= 0 %}selected{% endif %}>収入</option>
+            </select>
+            <input class="edit-input" name="amount_yen" type="number" min="0" value="{{ e.amount_yen | abs }}" form="oneoff-{{ e.id }}" required />
+          </td>
+          <td>
+            <select class="edit-input" name="account_id" form="oneoff-{{ e.id }}" required>
+              {% for a in accounts %}
+                <option value="{{ a.id }}" {% if a.id == e.account_id %}selected{% endif %}>{{ a.name }} (ID:{{ a.id }})</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not oneoffs %}
+        <tr><td colspan="6" class="empty">履歴がありません。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
   </div>
 </div>

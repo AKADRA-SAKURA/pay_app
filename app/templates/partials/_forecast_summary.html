@@ -1,8 +1,10 @@
-<!-- 口座別 残高予測（サマリ + 危険検知） -->
+﻿<!-- 口座別 残高予測（サマリ） -->
+
 <div class="card mt-14">
   <h2>口座別 残高予測（サマリ） <span class="pill">M2</span></h2>
 
   {% if forecast and forecast["accounts"] %}
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -28,9 +30,9 @@
           <td>{{ (s.get("min_date") if s else "-") }}</td>
           <td style="text-align:center">
             {% if s and s.get("is_danger") %}
-              <span class="danger-chip">⚠️</span>
+              <span class="danger-chip">⚠</span>
             {% else %}
-              ✅
+              -
             {% endif %}
           </td>
           <td style="text-align:center">
@@ -47,13 +49,12 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   <div class="hint mt-10">
-    ※ 「最低」は予測期間内で一番残高が低い日です。⚠️は閾値未満（デフォルト0円未満）を意味します。
+    ※ 「最低」は予測期間内で一番残高が低い日です。⚠は閾値未満（デフォルト0円未満）を意味します。
   </div>
   {% else %}
-  <div class="empty">
-    予測データがありません（イベント再生成を押してね）
-  </div>
+  <div class="empty">予測データがありません。イベントを作成してください。</div>
   {% endif %}
 </div>

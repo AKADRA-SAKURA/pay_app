@@ -1,150 +1,202 @@
+﻿<!-- チャージ / 残高移動登録（オーバーレイ） -->
+
+<div id="transfer-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>チャージ / 残高移動登録 <span class="pill">PayPay / Suica / NISA</span></h2>
+
+    <form method="post" action="/transfer" class="form">
+      <label class="col-span-all">
+        日付
+        <input name="date" type="date" required />
+      </label>
+
+      <label>
+        方法
+        <select name="method" required>
+          <option value="bank">口座から移動</option>
+          <option value="debit">デビット（口座から即時）</option>
+          <option value="card">クレカチャージ（支払は後日）</option>
+        </select>
+      </label>
+
+      <label>
+        金額（円）
+        <input name="amount_yen" type="number" min="0" value="0" required />
+      </label>
+
+      <label class="col-span-all">
+        From（口座など）
+        <select name="from_account_id" required>
+          {% for a in accounts %}
+            <option value="{{ a.id }}">{{ a.name }} ({{ a.kind }}) / ID:{{ a.id }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="col-span-all">
+        To（PayPay / Suica / NISA など）
+        <select name="to_account_id" required>
+          {% for a in accounts %}
+            <option value="{{ a.id }}">{{ a.name }} ({{ a.kind }}) / ID:{{ a.id }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="col-span-all">
+        カード（method=card のとき）
+        <select name="card_id">
+          <option value="">-</option>
+          {% for c in cards %}
+            <option value="{{ c.id }}">{{ c.name }} (ID:{{ c.id }})</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="col-span-all">
+        メモ
+        <input name="description" placeholder="PayPayチャージ / Suicaチャージ / NISA積立" />
+      </label>
+
+      <div class="actions col-span-all">
+        <button class="btn" type="submit">追加</button>
+      </div>
+
+      <div class="hint col-span-all">
+        ※ クレカチャージは To のみ作成し、カード取引に記録します。支払日は後日。
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- チャージ / 残高移動一覧 -->
+
 <div class="card">
-  <h2>チャージ / 資産移動 <span class="pill">PayPay・Suica・NISA</span></h2>
+  <div class="card-head">
+    <h2>チャージ / 残高移動一覧 <span class="pill">最新30件</span></h2>
+    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="transfer-form-template">＋ 追加</button>
+  </div>
 
-  <form method="post" action="/transfer" class="form">
-    <label class="col-span-all">
-      日付
-      <input name="date" type="date" required />
-    </label>
-
-    <label>
-      方法
-      <select name="method" required>
-        <option value="bank">口座からチャージ</option>
-        <option value="debit">デビッド（口座即時）</option>
-        <option value="card">クレカチャージ（引落は後日）</option>
-      </select>
-    </label>
-
-    <label>
-      金額（円）
-      <input name="amount_yen" type="number" min="0" value="0" required />
-    </label>
-
-    <label class="col-span-all">
-      From（口座など）
-      <select name="from_account_id" required>
-        {% for a in accounts %}
-          <option value="{{ a.id }}">{{ a.name }}（{{ a.kind }} / ID:{{ a.id }}）</option>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:90px;">ID</th>
+          <th style="width:140px;">日付</th>
+          <th style="width:90px;">方法</th>
+          <th style="width:160px;">金額</th>
+          <th>From → To</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in transfers %}
+        <tr data-edit-row>
+          <td class="edit-actions sticky-col">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
+            <form id="transfer-{{ t['transfer_id'] }}" method="post" action="/transfer/{{ t['transfer_id'] }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">保存</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">キャンセル</button>
+            <form method="post" action="/transfer/{{ t['transfer_id'] }}/delete" style="margin:0; display:inline;">
+              <button class="btn btn-danger" type="submit">削除</button>
+            </form>
+          </td>
+          <td>{{ t['id'] }}</td>
+          <td>
+            <input class="edit-input" name="date" type="date" value="{{ t['date'] }}" form="transfer-{{ t['transfer_id'] }}" required />
+          </td>
+          <td><span class="pill">{{ t['method'] }}</span></td>
+          <td class="money">
+            <input class="edit-input" name="amount_yen" type="number" min="0" value="{{ t['amount_yen'] }}" form="transfer-{{ t['transfer_id'] }}" required />
+          </td>
+          <td>
+            <select class="edit-input" name="from_account_id" form="transfer-{{ t['transfer_id'] }}" required>
+              {% for a in accounts %}
+                <option value="{{ a.id }}" {% if a.id == t['from_id'] %}selected{% endif %}>{{ a.name }} (ID:{{ a.id }})</option>
+              {% endfor %}
+            </select>
+            <span>→</span>
+            <select class="edit-input" name="to_account_id" form="transfer-{{ t['transfer_id'] }}" required>
+              {% for a in accounts %}
+                <option value="{{ a.id }}" {% if a.id == t['to_id'] %}selected{% endif %}>{{ a.name }} (ID:{{ a.id }})</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
         {% endfor %}
-      </select>
-    </label>
 
-    <label class="col-span-all">
-      To（PayPay / Suica / NISAなど）
-      <select name="to_account_id" required>
-        {% for a in accounts %}
-          <option value="{{ a.id }}">{{ a.name }}（{{ a.kind }} / ID:{{ a.id }}）</option>
-        {% endfor %}
-      </select>
-    </label>
+        {% if not transfers %}
+        <tr><td colspan="6" class="empty">チャージ履歴がありません。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
 
-    <label class="col-span-all">
-      クレカ（method=card のとき）
-      <select name="card_id">
-        <option value="">-</option>
-        {% for c in cards %}
-          <option value="{{ c.id }}">{{ c.name }}（ID:{{ c.id }}）</option>
-        {% endfor %}
-      </select>
-    </label>
-
-    <label class="col-span-all">
-      メモ
-      <input name="description" placeholder="PayPayチャージ / Suicaチャージ / NISA積立" />
-    </label>
-
-    <div class="actions col-span-all">
-      <button class="btn" type="submit">登録</button>
-    </div>
-
-    <div class="hint col-span-all">
-      ※ クレカチャージは「Toが増える」＋「カード決済が増える」扱い → 引落日に口座が減ります
-    </div>
-  </form>
-
-  <!-- 一覧（transfer） -->
   <div class="mt-14">
-    <h2>チャージ履歴 <span class="pill">最新30件</span></h2>
+    <h2>クレカチャージ履歴 <span class="pill">最新30件</span></h2>
 
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th style="width:90px;">ID</th>
-            <th style="width:140px;">日付</th>
-            <th style="width:90px;">方法</th>
-            <th style="width:160px;">金額</th>
-            <th>From → To</th>
-            <th style="width:100px;"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in transfers %}
-          <tr>
-            <td>{{ t["id"] }}</td>
-            <td>{{ t["date"] }}</td>
-            <td><span class="pill">{{ t["method"] }}</span></td>
-            <td class="money">{{ "{:,}".format(t["amount_yen"]) }} 円</td>
-            <td>{{ t["from_label"] }} → {{ t["to_label"] }}</td>
-            <td>
-              <form method="post" action="/transfer/{{ t["transfer_id"] }}/delete" style="margin:0;">
-                <button class="btn btn-danger" type="submit">削除</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-
-          {% if not transfers %}
-          <tr><td colspan="6" class="empty">まだチャージがありません</td></tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- クレカチャージ一覧（CardTransaction） -->
-    <div class="mt-14">
-    <h2>クレカチャージ履歴 <span class="pill">最新30件</span></h2>
-
-    <table>
-        <thead>
-        <tr>
+            <th class="sticky-col" style="width:140px;">操作</th>
             <th style="width:90px;">ID</th>
             <th style="width:140px;">日付</th>
             <th style="width:160px;">カード</th>
             <th style="width:160px;">金額</th>
             <th>チャージ先</th>
-            <th style="width:100px;"></th>
-        </tr>
+          </tr>
         </thead>
         <tbody>
-        {% for t in card_charges %}
-        <tr>
-            <td>{{ t.id }}</td>
-            <td>{{ t.date }}</td>
-            <td style="font-weight:650">{{ t.card_name }}</td>
-            <td class="money">{{ "{:,}".format(t.amount_yen) }} 円</td>
-            <td>{{ t.to_label }}</td>
-            <td>
-            <form method="post" action="/card_charges/{{ t.id }}/delete" style="margin:0;">
+          {% for t in card_charges %}
+          <tr data-edit-row>
+            <td class="edit-actions sticky-col">
+              <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
+              <form id="card-charge-{{ t.id }}" method="post" action="/card_charges/{{ t.id }}/update" style="margin:0; display:inline;">
+                <button class="btn save-btn" type="submit">保存</button>
+              </form>
+              <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">キャンセル</button>
+              <form method="post" action="/card_charges/{{ t.id }}/delete" style="margin:0; display:inline;">
                 <button class="btn btn-danger" type="submit">削除</button>
-            </form>
+              </form>
             </td>
-        </tr>
-        {% endfor %}
-        {% if not card_charges %}
-        <tr><td colspan="6" class="empty">まだクレカチャージがありません</td></tr>
-        {% endif %}
+            <td>{{ t.id }}</td>
+            <td>
+              <input class="edit-input" name="date" type="date" value="{{ t.date }}" form="card-charge-{{ t.id }}" required />
+            </td>
+            <td>
+              <select class="edit-input" name="card_id" form="card-charge-{{ t.id }}" required>
+                {% for c in cards %}
+                  <option value="{{ c.id }}" {% if c.id == t.card_id %}selected{% endif %}>{{ c.name }} (ID:{{ c.id }})</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td class="money">
+              <input class="edit-input" name="amount_yen" type="number" min="0" value="{{ t.amount_yen }}" form="card-charge-{{ t.id }}" required />
+            </td>
+            <td>
+              <select class="edit-input" name="to_account_id" form="card-charge-{{ t.id }}" required>
+                {% for a in accounts %}
+                  <option value="{{ a.id }}" {% if a.id == t.to_account_id %}selected{% endif %}>{{ a.name }} (ID:{{ a.id }})</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+
+          {% if not card_charges %}
+          <tr><td colspan="6" class="empty">クレカチャージがありません。</td></tr>
+          {% endif %}
         </tbody>
-    </table>
-
-    <div class="hint mt-10">
-        ※ クレカチャージは「To残高が増える」＋「カード利用が増える」。口座の減少は引落日に反映されます。
-    </div>
+      </table>
     </div>
 
     <div class="hint mt-10">
-      ※ bank/debit のチャージは「From減る / To増える」の2イベントを1行にまとめて表示しています。
+      ※ クレカチャージは To 残高が増え、カード支払日に口座から引落されます。
     </div>
+  </div>
+
+  <div class="hint mt-10">
+    ※ bank/debit の移動は From/To の2イベントを同日に作成して表示しています。
   </div>
 </div>

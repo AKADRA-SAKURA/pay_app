@@ -1,7 +1,9 @@
-<!-- 口座別（M1-6） -->
+﻿<!-- 口座別の予測 -->
+
 <div class="card mt-14">
   <h2>口座別の予測 <span class="pill">M1-6</span></h2>
 
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -29,11 +31,12 @@
 
       {% if not account_summaries %}
       <tr>
-        <td colspan="7" class="empty">口座がありません（先に口座を作ってね）</td>
+        <td colspan="7" class="empty">口座がありません。先に口座を追加してください。</td>
       </tr>
       {% endif %}
     </tbody>
   </table>
+  </div>
 
   <div class="hint mt-10">
     ※ 予定（plan）の口座を正しく選ぶと、口座別の残額予測が合います。
