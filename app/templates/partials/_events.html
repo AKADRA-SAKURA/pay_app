@@ -1,6 +1,8 @@
-<!-- イベント（今月/来月） -->
+﻿<!-- イベント（今月 / 来月） -->
+
 <div class="card">
   <h2>今月のイベント</h2>
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -20,17 +22,17 @@
 
       {% if not events_this %}
       <tr>
-        <td colspan="3" class="empty">
-          イベントがありません（イベント再生成を押してね）
-        </td>
+        <td colspan="3" class="empty">イベントがありません。予定を作成してください。</td>
       </tr>
       {% endif %}
     </tbody>
   </table>
+  </div>
 </div>
 
 <div class="card">
   <h2>来月のイベント</h2>
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -50,11 +52,10 @@
 
       {% if not events_next %}
       <tr>
-        <td colspan="3" class="empty">
-          イベントがありません（イベント再生成を押してね）
-        </td>
+        <td colspan="3" class="empty">イベントがありません。予定を作成してください。</td>
       </tr>
       {% endif %}
     </tbody>
   </table>
+  </div>
 </div>

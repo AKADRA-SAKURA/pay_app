@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
@@ -9,13 +9,25 @@
   </head>
 
   <body>
+    <button id="menu-toggle" class="menu-toggle-btn" type="button" aria-label="メニュー" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <div id="menu-backdrop" class="menu-backdrop"></div>
+    <aside id="menu-drawer" class="menu-drawer" aria-hidden="true">
+      <div class="menu-drawer-head">
+        <strong>ページ内メニュー</strong>
+        <button id="menu-close" class="btn btn-ghost" type="button">閉じる</button>
+      </div>
+      <nav id="menu-list" class="menu-list"></nav>
+    </aside>
+
     <div class="wrap">
       <div class="header">
         <div>
           <h1>{% block page_h1 %}家計簿アプリ{% endblock %}</h1>
           <p class="sub">
             {% block page_sub %}
-              収支記録から「これから」のアクションにつなげるアプリ。
+              収支記録からこれからのアクションにつなげるアプリ。
             {% endblock %}
           </p>
         </div>
@@ -26,11 +38,16 @@
     </div>
 
     {% block body_end %}
-        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-        <script src="/static/overlay.js"></script>
-        <script src="/static/chart_total.js"></script>
-        <script src="/static/chart_free.js"></script>
-        <script src="/static/inline_edit.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+      <script src="/static/overlay.js"></script>
+      <script src="/static/chart_combined.js"></script>
+      <script src="/static/chart_pay_pie.js"></script>
+      <script src="/static/inline_edit.js"></script>
+      <script src="/static/table_collapse.js"></script>
+      <script src="/static/table_sort_filter.js"></script>
+      <script src="/static/form_rules.js"></script>
+      <script src="/static/form_overlay.js"></script>
+      <script src="/static/menu_nav.js"></script>
     {% endblock %}
   </body>
 </html>

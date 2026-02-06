@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const overlay = document.getElementById("overlay");
   const closeBtn = document.getElementById("overlay-close");
   const titleEl = document.getElementById("overlay-title");
@@ -7,7 +7,7 @@
   if (!overlay || !closeBtn || !titleEl || !bodyEl) return;
 
   function openOverlay(name, series) {
-    titleEl.textContent = `${name} の残高推移（イベント時点）`;
+    titleEl.textContent = `${name} の残高推移（イベント集計）`;
     bodyEl.innerHTML = "";
 
     for (const p of series) {
@@ -17,11 +17,12 @@
       dateTd.textContent = p.date ?? "";
 
       const deltaTd = document.createElement("td");
-      const delta = (p.delta_yen ?? 0);
-      deltaTd.textContent = (delta >= 0 ? "+" : "") + delta;
+      const delta = Number(p.delta_yen ?? 0);
+      deltaTd.textContent = `${delta >= 0 ? "+" : ""}${delta.toLocaleString()}`;
 
       const balTd = document.createElement("td");
-      balTd.textContent = p.balance_yen ?? "";
+      const bal = Number(p.balance_yen ?? 0);
+      balTd.textContent = bal.toLocaleString();
 
       tr.appendChild(dateTd);
       tr.appendChild(deltaTd);

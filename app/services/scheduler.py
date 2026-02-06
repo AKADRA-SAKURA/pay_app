@@ -39,6 +39,10 @@ def build_month_events(db: Session, user_id: int, month_first: date) -> list[Cas
         if not p.account_id:
             # 口座がない plan はイベント生成しない
             continue
+        # カード支払いの予定は、引落に集計するためここでは生成しない
+        if getattr(p, "payment_method", "bank") == "card" and getattr(p, "card_id", None):
+            continue
+
         # start_date が NULL の古いデータ対策
         p_start = p.start_date or date.today()
 
@@ -65,6 +69,9 @@ def build_month_events(db: Session, user_id: int, month_first: date) -> list[Cas
             ev_date,
             cashflow_type="income" if p.type == "income" else "expense",
         )
+        # 終了日がある場合はそれ以降を作らない
+        if p.end_date and ev_date > p.end_date:
+            continue
 
         # amount: incomeは+、subscription(支出)は-
         amount = int(p.amount_yen or 0)
@@ -93,6 +100,8 @@ def rebuild_events(db: Session, user_id: int) -> None:
     this_first = today.replace(day=1)
     next_y, next_m = _month_add(this_first.year, this_first.month, 1)
     next_first = date(next_y, next_m, 1)
+    next2_y, next2_m = _month_add(this_first.year, this_first.month, 2)
+    next2_first = date(next2_y, next2_m, 1)
 
     # 新：再生成対象だけ消す（plan と card 引落だけ）
     db.query(CashflowEvent).filter(
@@ -104,10 +113,12 @@ def rebuild_events(db: Session, user_id: int) -> None:
     events: list[CashflowEvent] = []
     events += build_month_events(db, user_id, this_first)
     events += build_month_events(db, user_id, next_first)
+    events += build_month_events(db, user_id, next2_first)
 
-    # ★ 追記：カード引落（今月・来月の引落分）
+    # ★ 追記：カード引落（今月・来月・再来月の引落分）
     events += build_card_withdraw_events(db, user_id, this_first.year, this_first.month)
     events += build_card_withdraw_events(db, user_id, next_first.year, next_first.month)
+    events += build_card_withdraw_events(db, user_id, next2_first.year, next2_first.month)
 
     db.add_all(events)
     db.commit()
@@ -154,6 +165,49 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
         ).scalar()
 
         total = int(total or 0)
+
+        # plan (payment_method=card) の予定支出も加算
+        plans = (
+            db.query(Plan)
+            .filter(Plan.user_id == user_id)
+            .filter(Plan.payment_method == "card")
+            .filter(Plan.card_id == card.id)
+            .all()
+        )
+
+        def _plan_occurs_in_range(p: Plan, start: date, end: date) -> list[date]:
+            dates: list[date] = []
+            cur_first = date(start.year, start.month, 1)
+            while cur_first <= end:
+                should = False
+                if p.freq == "monthly":
+                    should = True
+                elif p.freq == "yearly":
+                    should = (p.month == cur_first.month)
+                elif p.freq == "monthly_interval":
+                    should = occurs_monthly_interval(p.start_date or date.today(), cur_first, p.interval_months or 1)
+                if should:
+                    desired = p.day or 1
+                    ev_date = resolve_day_in_month(cur_first.year, cur_first.month, desired)
+                    ev_date = apply_business_day_rule(
+                        ev_date,
+                        cashflow_type="income" if p.type == "income" else "expense",
+                    )
+                    if p.end_date and ev_date > p.end_date:
+                        pass
+                    elif start <= ev_date <= end:
+                        dates.append(ev_date)
+                ny, nm = _month_add(cur_first.year, cur_first.month, 1)
+                cur_first = date(ny, nm, 1)
+            return dates
+
+        for p in plans:
+            if p.type == "income":
+                continue
+            amount = abs(int(p.amount_yen or 0))
+            for _ in _plan_occurs_in_range(p, period_start, period_end):
+                total += amount
+
 
         # statement（保存しておくと後で整合性が取れる）
         stmt = db.query(CardStatement).filter(

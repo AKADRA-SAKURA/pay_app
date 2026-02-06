@@ -1,8 +1,6 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block content %}
-
-  <!-- 最上段：予測 -->
   <section class="section">
     <h3 class="section-title">予測・サマリ</h3>
     <div class="grid">
@@ -11,19 +9,17 @@
     </div>
   </section>
 
-  <!-- 予測・危険 -->
   <section class="section">
     <h3 class="section-title">予測・危険</h3>
     <div class="grid">
-      {% include "partials/_chart_total.html" %}
-      {% include "partials/_chart_free.html" %}
       {% include "partials/_free_forecast.html" %}
+      {% include "partials/_chart_combined.html" %}
+      {% include "partials/_payment_pie.html" %}
       {% include "partials/_account_forecast_table.html" %}
       {% include "partials/_forecast_summary.html" %}
     </div>
   </section>
 
-  <!-- 現在状況 -->
   <section class="section">
     <h3 class="section-title">現在状況</h3>
     <div class="grid">
@@ -31,7 +27,6 @@
     </div>
   </section>
 
-  <!-- 下：登録・管理 -->
   <section class="section">
     <h3 class="section-title">登録・管理</h3>
     <div class="grid">
@@ -46,5 +41,4 @@
   </section>
 
   {% include "partials/_overlay.html" %}
-
 {% endblock %}

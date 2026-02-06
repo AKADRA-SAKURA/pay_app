@@ -3,6 +3,7 @@ load_dotenv()
 
 from uuid import uuid4
 from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query
+from sqlalchemy import text
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +25,43 @@ from app.utils.dates import month_range
 
 # 起動時にテーブル作成（簡易版）
 Base.metadata.create_all(bind=engine)
+
+# ---- lightweight migration for new Plan columns (local sqlite only) ----
+def _ensure_plan_columns() -> None:
+    if not str(engine.url).startswith("sqlite"):
+        return
+    with engine.connect() as conn:
+        cols = [r[1] for r in conn.execute(text("PRAGMA table_info(plans)")).fetchall()]
+        if "payment_method" not in cols:
+            conn.execute(text("ALTER TABLE plans ADD COLUMN payment_method VARCHAR(20) NOT NULL DEFAULT 'bank'"))
+        if "card_id" not in cols:
+            conn.execute(text("ALTER TABLE plans ADD COLUMN card_id INTEGER"))
+        if "end_date" not in cols:
+            conn.execute(text("ALTER TABLE plans ADD COLUMN end_date DATE"))
+
+_ensure_plan_columns()
+
+
+# ---- lightweight migration for new Subscription columns (local sqlite only) ----
+def _ensure_subscription_columns() -> None:
+    if not str(engine.url).startswith("sqlite"):
+        return
+    with engine.connect() as conn:
+        cols = [r[1] for r in conn.execute(text("PRAGMA table_info(subscriptions)")).fetchall()]
+        if "freq" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN freq VARCHAR(30) NOT NULL DEFAULT 'monthly'"))
+        if "interval_months" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN interval_months INTEGER NOT NULL DEFAULT 1"))
+        if "billing_month" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN billing_month INTEGER NOT NULL DEFAULT 1"))
+        if "payment_method" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN payment_method VARCHAR(20) NOT NULL DEFAULT 'bank'"))
+        if "account_id" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN account_id INTEGER"))
+        if "card_id" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN card_id INTEGER"))
+
+_ensure_subscription_columns()
 
 app = FastAPI(title="期限・固定費マネージャ（ローカル）")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -47,16 +85,52 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         next_first = date(this_first.year, this_first.month + 1, 1)
     next_first, next_last = month_range(next_first)
 
+    # 再来月
+    if next_first.month == 12:
+        next2_first = date(next_first.year + 1, 1, 1)
+    else:
+        next2_first = date(next_first.year, next_first.month + 1, 1)
+    next2_first, next2_last = month_range(next2_first)
+
     events_this = crud.list_events_between_with_plan(db, 1, this_first, this_last)
     events_next = crud.list_events_between_with_plan(db, 1, next_first, next_last)
+    events_next2 = crud.list_events_between_with_plan(db, 1, next2_first, next2_last)
+
+    def _build_payment_pie(events):
+        totals = {}
+        for e in events:
+            try:
+                amt = int(e.get("amount_yen") or 0)
+            except Exception:
+                amt = 0
+            if amt >= 0:
+                continue
+            if e.get("source") == "transfer":
+                continue
+            name = e.get("plan_title") or "-"
+            totals[name] = totals.get(name, 0) + abs(amt)
+
+        items = sorted(totals.items(), key=lambda x: x[1], reverse=True)
+        max_items = 8
+        if len(items) > max_items:
+            top = items[: max_items - 1]
+            rest = sum(v for _, v in items[max_items - 1 :])
+            items = top + [("Other", rest)]
+
+        return [{"label": k, "value": v} for k, v in items]
+
+    pay_pie_this = _build_payment_pie(events_this)
+    pay_pie_next = _build_payment_pie(events_next)
     from collections import defaultdict
 
     start_balance = crud.total_start_balance(db, 1)
     this_net = sum(e["amount_yen"] for e in events_this)
     next_net = sum(e["amount_yen"] for e in events_next)
+    next2_net = sum(e["amount_yen"] for e in events_next2)
 
     free_this = start_balance + this_net
     free_next = start_balance + this_net + next_net
+    free_next2 = start_balance + this_net + next_net + next2_net
 
     # --- 口座別集計（M1-6） ---
     # events_* は dict の配列（e["account_id"], e["amount_yen"] がある前提）
@@ -214,8 +288,10 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "events_next": events_next,
             "free_this": free_this,
             "free_next": free_next,
+            "free_next2": free_next2,
             "this_range": (this_first, this_last),
             "next_range": (next_first, next_last),
+            "next2_range": (next2_first, next2_last),
             "account_summaries": account_summaries,
             "forecast": forecast,
             "cards": cards,
@@ -223,6 +299,8 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "oneoffs": oneoffs,
             "transfers": transfers,
             "card_charges": card_charges,
+            "pay_pie_this": pay_pie_this,
+            "pay_pie_next": pay_pie_next,
             "advice": get_today_advice(db, user_id=1),
         },
     )
@@ -240,9 +318,49 @@ def create_subscription(
     name: str = Form(...),
     amount_yen: int = Form(...),
     billing_day: int = Form(...),
+    freq: str = Form("monthly"),
+    interval_months: str | None = Form(None),
+    billing_month: str | None = Form(None),
+    payment_method: str = Form("bank"),
+    account_id: str | None = Form(None),
+    card_id: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    data = SubscriptionCreate(name=name, amount_yen=amount_yen, billing_day=billing_day)
+    def _to_int(v: str | None) -> int | None:
+        try:
+            return int(v) if v not in (None, "") else None
+        except Exception:
+            return None
+
+    interval_i = _to_int(interval_months) or 1
+    month_i = _to_int(billing_month) or 1
+    account_i = _to_int(account_id)
+    card_i = _to_int(card_id)
+
+    if freq == "monthly":
+        interval_i = 1
+        month_i = 1
+    elif freq == "yearly":
+        interval_i = 1
+    elif freq == "monthly_interval":
+        month_i = 1
+
+    if payment_method == "bank":
+        card_i = None
+    elif payment_method == "card":
+        account_i = None
+
+    data = SubscriptionCreate(
+        name=name,
+        amount_yen=amount_yen,
+        billing_day=billing_day,
+        freq=freq,
+        interval_months=interval_i,
+        billing_month=month_i,
+        payment_method=payment_method,
+        account_id=account_i,
+        card_id=card_i,
+    )
     crud.create_subscription(db, data)
     return RedirectResponse(url="/", status_code=303)
 
@@ -254,13 +372,48 @@ def update_subscription(
     name: str = Form(...),
     amount_yen: int = Form(...),
     billing_day: int = Form(...),
+    freq: str = Form("monthly"),
+    interval_months: str | None = Form(None),
+    billing_month: str | None = Form(None),
+    payment_method: str = Form("bank"),
+    account_id: str | None = Form(None),
+    card_id: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    def _to_int(v: str | None) -> int | None:
+        try:
+            return int(v) if v not in (None, "") else None
+        except Exception:
+            return None
+
+    interval_i = _to_int(interval_months) or 1
+    month_i = _to_int(billing_month) or 1
+    account_i = _to_int(account_id)
+    card_i = _to_int(card_id)
+
+    if freq == "monthly":
+        interval_i = 1
+        month_i = 1
+    elif freq == "yearly":
+        interval_i = 1
+    elif freq == "monthly_interval":
+        month_i = 1
+
+    if payment_method == "bank":
+        card_i = None
+    elif payment_method == "card":
+        account_i = None
     sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
     if sub:
         sub.name = name
         sub.amount_yen = int(amount_yen)
         sub.billing_day = int(billing_day)
+        sub.freq = freq
+        sub.interval_months = int(interval_i)
+        sub.billing_month = int(month_i)
+        sub.payment_method = payment_method
+        sub.account_id = int(account_i) if account_i is not None else None
+        sub.card_id = int(card_i) if card_i is not None else None
         db.commit()
     return RedirectResponse(url="/", status_code=303)
 
@@ -288,33 +441,72 @@ def add_plan(
     type: str = Form(...),            # "income" or "subscription"
     title: str = Form(...),
     amount_yen: int = Form(...),
-    account_id: int = Form(...),
+    account_id: str | None = Form(None),
+    payment_method: str = Form("bank"),
+    card_id: str | None = Form(None),
     freq: str = Form(...),            # monthly/yearly/monthly_interval
-    day: int = Form(1),
-    interval_months: int = Form(1),
+    day: str | None = Form(None),
+    interval_months: str | None = Form(None),
     start_date: str | None = Form(default=None),
-    month: int = Form(1),
+    end_date: str | None = Form(default=None),
+    month: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    if not account_id:
-        raise HTTPException(status_code=400, detail="account_id is required")
+    def _to_int(v: str | None) -> int | None:
+        try:
+            return int(v) if v not in (None, "") else None
+        except Exception:
+            return None
+
+    account_i = _to_int(account_id)
+    card_i = _to_int(card_id)
+    day_i = _to_int(day) or 1
+    interval_i = _to_int(interval_months) or 1
+    month_i = _to_int(month) or 1
+
+    if freq == "monthly":
+        interval_i = 1
+        month_i = 1
+    elif freq == "yearly":
+        interval_i = 1
+    elif freq == "monthly_interval":
+        month_i = 1
+
+    if payment_method == "bank":
+        if not account_i:
+            raise HTTPException(status_code=400, detail="account_id is required")
+        card_i = None
+    elif payment_method == "card":
+        if not card_i:
+            raise HTTPException(status_code=400, detail="card_id is required for card payment")
+        card = db.query(Card).filter(Card.id == card_i).one_or_none()
+        if card is None:
+            raise HTTPException(status_code=400, detail="card not found")
+        account_i = int(card.payment_account_id)
 
     if start_date:
         sd = datetime.strptime(start_date, "%Y-%m-%d").date()
     else:
         sd = date.today()
+    if end_date:
+        ed = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        ed = None
     crud.create_plan(
         db,
         user_id=1,
         type=type,
         title=title,
         amount_yen=amount_yen,
-        account_id=account_id,
+        account_id=account_i,
         freq=freq,
-        day=day,
-        interval_months=interval_months,
+        day=day_i,
+        interval_months=interval_i,
+        month=month_i,
         start_date=sd,
-        month=month,
+        end_date=ed,
+        payment_method=payment_method,
+        card_id=card_i,
     )
     return RedirectResponse(url="/", status_code=303)
 
@@ -357,26 +549,67 @@ def update_plan(
     type: str = Form(...),
     title: str = Form(...),
     amount_yen: int = Form(...),
-    account_id: int = Form(...),
+    account_id: str | None = Form(None),
+    payment_method: str = Form("bank"),
+    card_id: str | None = Form(None),
     freq: str = Form(...),
-    day: int = Form(1),
-    interval_months: int = Form(1),
+    day: str | None = Form(None),
+    interval_months: str | None = Form(None),
     start_date: str | None = Form(default=None),
-    month: int = Form(1),
+    end_date: str | None = Form(default=None),
+    month: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     p = db.query(Plan).filter(Plan.id == plan_id, Plan.user_id == 1).first()
     if p:
+        def _to_int(v: str | None) -> int | None:
+            try:
+                return int(v) if v not in (None, "") else None
+            except Exception:
+                return None
+
+        account_i = _to_int(account_id)
+        card_i = _to_int(card_id)
+        day_i = _to_int(day) or 1
+        interval_i = _to_int(interval_months) or 1
+        month_i = _to_int(month) or 1
+
+        if freq == "monthly":
+            interval_i = 1
+            month_i = 1
+        elif freq == "yearly":
+            interval_i = 1
+        elif freq == "monthly_interval":
+            month_i = 1
+
+        if payment_method == "bank":
+            if not account_i:
+                raise HTTPException(status_code=400, detail="account_id is required")
+            card_i = None
+        elif payment_method == "card":
+            if not card_i:
+                raise HTTPException(status_code=400, detail="card_id is required for card payment")
+            card = db.query(Card).filter(Card.id == card_i).one_or_none()
+            if card is None:
+                raise HTTPException(status_code=400, detail="card not found")
+            account_i = int(card.payment_account_id)
+
         p.type = type
         p.title = title
         p.amount_yen = int(amount_yen)
-        p.account_id = int(account_id)
+        p.account_id = int(account_i)
+        p.payment_method = payment_method
+        p.card_id = int(card_i) if card_i is not None else None
         p.freq = freq
-        p.day = int(day)
-        p.interval_months = int(interval_months)
-        p.month = int(month)
+        p.day = int(day_i)
+        p.interval_months = int(interval_i)
+        p.month = int(month_i)
         if start_date:
             p.start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+        if end_date:
+            p.end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+        else:
+            p.end_date = None
         db.commit()
     return RedirectResponse(url="/", status_code=303)
 

@@ -1,0 +1,29 @@
+﻿<div class="card col-span-all">
+  <h2>決済内訳 <span class="pill">円グラフ</span></h2>
+
+  {% if pay_pie_this or pay_pie_next %}
+  <div class="pie-grid">
+    <div class="pie-item">
+      <div class="hint" style="margin-bottom: 6px;">今月</div>
+      <div class="chart-wrap pie-wrap">
+        <canvas id="payPieThis"></canvas>
+      </div>
+    </div>
+    <div class="pie-item">
+      <div class="hint" style="margin-bottom: 6px;">来月</div>
+      <div class="chart-wrap pie-wrap">
+        <canvas id="payPieNext"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script id="payPieThisData" type="application/json">
+    {{ pay_pie_this | default([]) | tojson }}
+  </script>
+  <script id="payPieNextData" type="application/json">
+    {{ pay_pie_next | default([]) | tojson }}
+  </script>
+  {% else %}
+  <div class="empty">決済データがありません</div>
+  {% endif %}
+</div>

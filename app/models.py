@@ -11,7 +11,13 @@ class Subscription(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     amount_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    billing_day: Mapped[int] = mapped_column(Integer, nullable=False)  # 1〜31（簡易版）
+    billing_day: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-31
+    freq: Mapped[str] = mapped_column(String(30), nullable=False, default="monthly")
+    interval_months: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    billing_month: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    payment_method: Mapped[str] = mapped_column(String(20), nullable=False, default="bank")
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    card_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Account(Base):
@@ -39,6 +45,8 @@ class Plan(Base):
     amount_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     account_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(20), nullable=False, default="bank")
+    card_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     freq: Mapped[str] = mapped_column(String(30), nullable=False, default="monthly")
     day: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -46,6 +54,7 @@ class Plan(Base):
     month: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     start_date = mapped_column(Date, nullable=True, default=date.today)
+    end_date = mapped_column(Date, nullable=True, default=None)
 
     events = relationship("CashflowEvent", back_populates="plan", cascade="all, delete-orphan")
 
