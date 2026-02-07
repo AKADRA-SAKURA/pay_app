@@ -4,7 +4,7 @@ load_dotenv()
 from uuid import uuid4
 from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query
 from sqlalchemy import text
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
@@ -67,6 +67,11 @@ app = FastAPI(title="期限・固定費マネージャ（ローカル）")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse("app/static/favicon.png", media_type="image/png")
 
 
 @app.get("/", response_class=HTMLResponse)
