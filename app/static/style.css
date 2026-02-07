@@ -842,9 +842,19 @@ tbody tr:last-child td {
   justify-content: space-between;
   gap: 12px;
 }
+.card-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .card-head .btn-plus {
   padding: 6px 12px;
   border-radius: 999px;
+}
+.card-head .btn-upload {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 700;
 }
 .overlay-form-template {
   display: none;

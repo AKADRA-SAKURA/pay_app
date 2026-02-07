@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from uuid import uuid4
-from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query
+from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query, UploadFile, File
 from sqlalchemy import text
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session, joinedload
 from datetime import date, datetime
 import calendar
 import re
+import csv
+import io
 
 from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 from .db import Base, engine, get_db, SessionLocal
@@ -72,6 +74,76 @@ templates = Jinja2Templates(directory="app/templates")
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
     return FileResponse("app/static/favicon.png", media_type="image/png")
+
+
+def _decode_csv_bytes(content: bytes) -> str:
+    last_err = None
+    for enc in ("utf-8-sig", "cp932", "utf-8"):
+        try:
+            return content.decode(enc)
+        except Exception as e:
+            last_err = e
+    raise HTTPException(status_code=400, detail=f"CSV decode failed: {last_err}")
+
+
+def _csv_dict_rows(content: bytes) -> list[dict[str, str]]:
+    text = _decode_csv_bytes(content)
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV header is required")
+    return [dict(r) for r in reader]
+
+
+def _parse_csv_date(v: str) -> date:
+    s = (v or "").strip()
+    for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%Y.%m.%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    raise ValueError(f"invalid date: {v}")
+
+
+def _parse_csv_amount(v: str) -> int:
+    s = (v or "").strip().replace(",", "").replace("円", "")
+    if s == "":
+        raise ValueError("empty price")
+    return int(float(s))
+
+
+def _resolve_account_id(db: Session, key: str) -> int:
+    s = (key or "").strip()
+    if not s:
+        raise ValueError("account is empty")
+    if s.isdigit():
+        acc = db.query(Account).filter(Account.id == int(s)).first()
+    else:
+        acc = db.query(Account).filter(Account.name == s).first()
+    if acc is None:
+        raise ValueError(f"account not found: {s}")
+    return int(acc.id)
+
+
+def _resolve_card_id(db: Session, key: str) -> int:
+    s = (key or "").strip()
+    if not s:
+        raise ValueError("card is empty")
+    if s.isdigit():
+        card = db.query(Card).filter(Card.id == int(s)).first()
+    else:
+        card = db.query(Card).filter(Card.name == s).first()
+    if card is None:
+        raise ValueError(f"card not found: {s}")
+    return int(card.id)
+
+
+def _parse_direction(v: str) -> str:
+    s = (v or "").strip().lower()
+    if s in ("expense", "支出", "exp", "-"):
+        return "expense"
+    if s in ("income", "収入", "inc", "+"):
+        return "income"
+    raise ValueError(f"invalid type: {v}")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -720,6 +792,50 @@ def create_card_transaction(
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/card-transactions/import-csv")
+async def import_card_transactions_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    content = await file.read()
+    rows = _csv_dict_rows(content)
+
+    required = {"yyyy/mm/dd", "title", "price", "card"}
+    headers = {h.strip().lower() for h in (rows[0].keys() if rows else [])}
+    if rows and not required.issubset(headers):
+        raise HTTPException(
+            status_code=400,
+            detail="CSV headers must include: yyyy/mm/dd, title, price, card",
+        )
+
+    created = 0
+    for r in rows:
+        row = {str(k).strip().lower(): (v or "").strip() for k, v in r.items()}
+        if not any(row.values()):
+            continue
+        try:
+            tx_date = _parse_csv_date(row.get("yyyy/mm/dd", ""))
+            merchant = row.get("title", "")
+            amount = abs(_parse_csv_amount(row.get("price", "")))
+            card_id = _resolve_card_id(db, row.get("card", ""))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"card csv parse error: {e}")
+
+        db.add(
+            CardTransaction(
+                card_id=card_id,
+                date=tx_date,
+                amount_yen=amount,
+                merchant=merchant or None,
+            )
+        )
+        created += 1
+
+    if created > 0:
+        db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.post("/card-transactions/{tx_id}/update")
 def update_card_transaction(
     tx_id: int,
@@ -778,6 +894,59 @@ def create_oneoff(
     )
     db.add(ev)
     db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/oneoff/import-csv")
+async def import_oneoff_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    content = await file.read()
+    rows = _csv_dict_rows(content)
+
+    required = {"yyyy/mm/dd", "type", "price", "account", "memo"}
+    headers = {h.strip().lower() for h in (rows[0].keys() if rows else [])}
+    if rows and not required.issubset(headers):
+        raise HTTPException(
+            status_code=400,
+            detail="CSV headers must include: yyyy/mm/dd, type, price, account, memo",
+        )
+
+    created = 0
+    for r in rows:
+        row = {str(k).strip().lower(): (v or "").strip() for k, v in r.items()}
+        if not any(row.values()):
+            continue
+        try:
+            ev_date = _parse_csv_date(row.get("yyyy/mm/dd", ""))
+            direction = _parse_direction(row.get("type", ""))
+            account_id = _resolve_account_id(db, row.get("account", ""))
+            amount = _parse_csv_amount(row.get("price", ""))
+            memo = row.get("memo", "")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"oneoff csv parse error: {e}")
+
+        amt = abs(amount)
+        if direction == "expense":
+            amt = -amt
+
+        db.add(
+            CashflowEvent(
+                user_id=1,
+                date=ev_date,
+                account_id=account_id,
+                amount_yen=amt,
+                plan_id=None,
+                description=memo or None,
+                source="oneoff",
+                status="expected",
+            )
+        )
+        created += 1
+
+    if created > 0:
+        db.commit()
     return RedirectResponse(url="/", status_code=303)
 
 
