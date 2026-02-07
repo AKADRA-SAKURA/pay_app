@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   function getFieldValue(field) {
     if (!field) return '';
     if (field.tagName === 'SELECT') {

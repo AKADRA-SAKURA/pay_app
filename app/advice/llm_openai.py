@@ -57,7 +57,8 @@ def _get_client() -> OpenAI:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
-    return OpenAI(api_key=api_key)
+    timeout_sec = float(os.getenv("ADVICE_LLM_TIMEOUT_SEC", "6"))
+    return OpenAI(api_key=api_key, timeout=timeout_sec, max_retries=0)
 
 def _parse_json_text(text: str) -> dict:
     try:
@@ -128,7 +129,7 @@ def generate_advice_openai(context: Dict[str, Any], *, max_retries: int = 2) -> 
                 resp = client.responses.create(
                     model="gpt-4.1-mini",
                     input=[
-                        {"role": "system", "content": system_instructions + "\n?????JSON???"},
+                        {"role": "system", "content": system_instructions + "\n必ず有効なJSONのみを返してください。"},
                         {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
                     ],
                 )

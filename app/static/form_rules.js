@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   function lockField(el, locked) {
     if (!el) return;
 

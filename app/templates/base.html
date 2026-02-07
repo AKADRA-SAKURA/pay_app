@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
@@ -33,7 +33,7 @@
             {% endblock %}
           </p>
         </div>
-        <span class="badge">LAN: http://{{ request.client.host }}:8000</span>
+        <span class="badge">LAN: {{ request.base_url }}</span>
       </div>
 
       {% block content %}{% endblock %}
@@ -49,6 +49,7 @@
       <script src="/static/table_sort_filter.js"></script>
       <script src="/static/form_rules.js"></script>
       <script src="/static/form_overlay.js"></script>
+      <script src="/static/import_statement.js"></script>
       <script src="/static/menu_nav.js"></script>
     {% endblock %}
   </body>
