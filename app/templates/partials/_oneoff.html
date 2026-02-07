@@ -1,8 +1,8 @@
-﻿<!-- 一時的な収支登録（オーバーレイ） -->
+﻿<!-- 単発支払い登録（オーバーレイ） -->
 
 <div id="oneoff-form-template" class="overlay-form-template">
   <div class="card">
-    <h2>一時的な収支登録 <span class="pill">現金 / バーコード / 電子マネー / 振替など</span></h2>
+    <h2>単発支払い登録 <span class="pill">現金 / バーコード / 電子マネー / 振替など</span></h2>
 
     <form method="post" action="/oneoff" class="form">
       <label class="col-span-all">
@@ -48,12 +48,33 @@
   </div>
 </div>
 
-<!-- 一時的な収支一覧 -->
+<div id="oneoff-csv-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>単発支払いCSV取込 <span class="pill">csv import</span></h2>
+    <form method="post" action="/oneoff/import-csv" enctype="multipart/form-data" class="form">
+      <label class="col-span-all">
+        CSV取込（yyyy/mm/dd,type,price,account,memo）
+        <input name="file" type="file" accept=".csv,text/csv" required />
+      </label>
+      <div class="actions col-span-all">
+        <button class="btn" type="submit">取込実行</button>
+      </div>
+      <div class="hint col-span-all">
+        ※ account は口座名またはIDを指定できます。
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 単発支払い一覧 -->
 
 <div class="card">
   <div class="card-head">
-    <h2>一時的な収支一覧 <span class="pill">最新30件</span></h2>
-    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="oneoff-form-template">＋ 追加</button>
+    <h2>単発支払い一覧 <span class="pill">最新30件</span></h2>
+    <div class="card-head-actions">
+      <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="oneoff-csv-form-template">⇪ CSV</button>
+      <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="oneoff-form-template">＋ 追加</button>
+    </div>
   </div>
 
   <div class="table-wrap">
