@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const overlay = document.getElementById('form-overlay');
   const body = document.getElementById('form-overlay-body');
   const closeBtn = document.getElementById('form-overlay-close');

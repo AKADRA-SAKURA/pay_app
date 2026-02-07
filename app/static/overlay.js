@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const overlay = document.getElementById("overlay");
   const closeBtn = document.getElementById("overlay-close");
   const titleEl = document.getElementById("overlay-title");

@@ -1,4 +1,4 @@
-﻿(async function () {
+(async function () {
   function readSeries() {
     const el = document.getElementById('totalSeriesData');
     if (!el) return [];

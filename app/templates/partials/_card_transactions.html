@@ -1,8 +1,11 @@
-﻿<!-- カード取引登録（オーバーレイ） -->
+<!-- カード取引登録（オーバーレイ） -->
 
 <div id="card-transaction-form-template" class="overlay-form-template">
   <div class="card">
-    <h2>カード取引登録 <span class="pill">フェーズ1</span></h2>
+    <div class="card-head">
+      <h2>カード取引登録 <span class="pill">フェーズ1</span></h2>
+      <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="card-import-form-template">⤴ 取込</button>
+    </div>
 
     {% if not cards %}
       <div class="hint">※ 先にカードを追加してください。</div>
@@ -21,7 +24,7 @@
 
       <label>
         金額（円）
-        <input name="amount_yen" type="number" min="0" value="0" required />
+        <input name="amount_yen" type="number" value="0" required />
       </label>
 
       <label>
@@ -44,25 +47,69 @@
   </div>
 </div>
 
-<div id="card-transaction-csv-form-template" class="overlay-form-template">
-  <div class="card">
-    <h2>カード取引CSV取込 <span class="pill">csv import</span></h2>
-    <form method="post" action="/card-transactions/import-csv" enctype="multipart/form-data" class="form">
+<!-- カード明細取り込み（オーバーレイ） -->
+
+<div id="card-import-form-template" class="overlay-form-template">
+  <div class="card" id="card-import-panel" data-import-card-panel>
+    <h2>カード明細取り込み <span class="pill">ローカル処理</span></h2>
+
+    <div class="form">
       <label class="col-span-all">
-        CSV取込（yyyy/mm/dd,title,price,card）
-        <input name="file" type="file" accept=".csv,text/csv" required />
+        カード
+        <select id="import-card-select" required>
+          {% for c in cards %}
+            <option value="{{ c.id }}">{{ c.name }} (ID:{{ c.id }})</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="col-span-all">
+        テキスト貼り付け
+        <textarea id="import-textarea" class="import-textarea" placeholder="PDF/csvからコピーした明細テキストを貼り付け"></textarea>
       </label>
       <div class="actions col-span-all">
-        {% if not cards %}
-          <button class="btn" type="submit" disabled style="opacity:.5;cursor:not-allowed;">取込実行</button>
-        {% else %}
-          <button class="btn" type="submit">取込実行</button>
-        {% endif %}
+        <button id="import-preview-text-btn" class="btn" type="button">テキストから抽出</button>
       </div>
-      <div class="hint col-span-all">
-        ※ card はカード名またはIDを指定できます。
+
+      <label class="col-span-all">
+        CSVアップロード
+        <input id="import-csv-file" type="file" accept=".csv,text/csv" />
+      </label>
+      <div class="hint col-span-all">CSV列: yyyy/mm/dd, title, price, card（card列は省略可。画面選択カードを使用）</div>
+      <div class="actions col-span-all">
+        <button id="import-preview-csv-btn" class="btn btn-ghost" type="button">CSVから抽出</button>
       </div>
-    </form>
+    </div>
+
+    <div id="import-warnings" class="import-alert import-alert-warn" hidden></div>
+    <div id="import-errors" class="import-alert import-alert-error" hidden></div>
+
+    <div id="import-preview-wrap" class="table-wrap mt-12" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:180px;">日付</th>
+            <th>タイトル</th>
+            <th style="width:140px;">金額</th>
+            <th style="width:90px;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="import-preview-body"></tbody>
+      </table>
+    </div>
+
+    <div class="actions col-span-all mt-12">
+      <label class="import-check" for="import-duplicate-mode">
+        重複時の動作
+        <select id="import-duplicate-mode">
+          <option value="skip">スキップ（既定）</option>
+          <option value="allow">重複も登録</option>
+        </select>
+      </label>
+      <button id="import-commit-btn" class="btn" type="button" disabled>確定登録</button>
+      <button id="import-clear-btn" class="btn btn-ghost" type="button">クリア</button>
+    </div>
+    <div class="hint mt-8">※ 抽出エラーが1件でもある場合は確定登録できません。</div>
   </div>
 </div>
 
@@ -72,7 +119,7 @@
   <div class="card-head">
     <h2>カード取引一覧 <span class="pill">最新50件</span></h2>
     <div class="card-head-actions">
-      <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="card-transaction-csv-form-template">⇪ CSV</button>
+      <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="card-import-form-template">⤴ テキスト/CSV取込</button>
       <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-transaction-form-template">＋ 追加</button>
     </div>
   </div>
@@ -110,7 +157,7 @@
             <input class="edit-input" name="merchant" value="{{ t.merchant or '' }}" form="tx-{{ t.id }}" />
           </td>
           <td class="money">
-            <input class="edit-input" name="amount_yen" type="number" min="0" value="{{ t.amount_yen }}" form="tx-{{ t.id }}" required />
+            <input class="edit-input" name="amount_yen" type="number" value="{{ t.amount_yen }}" form="tx-{{ t.id }}" required />
           </td>
           <td>
             <select class="edit-input" name="card_id" form="tx-{{ t.id }}" required>

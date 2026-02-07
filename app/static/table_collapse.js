@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const MAX_ROWS = 5;
 
   function getRows(tbody) {

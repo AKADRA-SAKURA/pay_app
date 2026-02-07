@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   function readData(id) {
     const el = document.getElementById(id);
     if (!el) return [];

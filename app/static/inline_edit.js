@@ -1,4 +1,4 @@
-﻿const toViewText = (el) => {
+const toViewText = (el) => {
   if (!el) return '';
   if (el.tagName === 'SELECT') {
     const opt = el.options[el.selectedIndex];

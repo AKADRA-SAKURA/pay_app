@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
+from pydantic import BaseModel, Field
 from datetime import date, datetime
 import calendar
 import re
@@ -24,8 +25,16 @@ from app.services.forecast import forecast_by_account_events, forecast_by_accoun
 from .services.forecast import forecast_free_daily
 from app.advice.service import get_today_advice
 from app.utils.dates import month_range
+from app.services.statement_import import (
+    parse_card_text_preview,
+    parse_card_csv_preview,
+    detect_duplicates,
+    build_import_key,
+    parse_flexible_date,
+    normalize_title,
+)
 
-# 起動時にテーブル作成（簡易版）
+# create tables at startup (local/dev only)
 Base.metadata.create_all(bind=engine)
 
 # ---- lightweight migration for new Plan columns (local sqlite only) ----
@@ -65,7 +74,7 @@ def _ensure_subscription_columns() -> None:
 
 _ensure_subscription_columns()
 
-app = FastAPI(title="期限・固定費マネージャ（ローカル）")
+app = FastAPI(title="家計簿・口座管理マネージャー（ローカル）")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
@@ -139,11 +148,167 @@ def _resolve_card_id(db: Session, key: str) -> int:
 
 def _parse_direction(v: str) -> str:
     s = (v or "").strip().lower()
-    if s in ("expense", "支出", "exp", "-"):
+    # Accept CSV direction tokens in EN/JA.
+    if s in ("expense", "exp", "-") or "支出" in s:
         return "expense"
-    if s in ("income", "収入", "inc", "+"):
+    if s in ("income", "inc", "+") or "収入" in s:
         return "income"
     raise ValueError(f"invalid type: {v}")
+
+
+class ImportRowIn(BaseModel):
+    date: str
+    title: str
+    price: int
+
+
+class ImportPreviewTextIn(BaseModel):
+    text: str = Field(min_length=1)
+    card: int
+
+
+class ImportCommitIn(BaseModel):
+    card: int
+    rows: list[ImportRowIn]
+    allow_duplicates: bool = False
+
+
+def _existing_card_keys(db: Session, card_id: int, date_strings: list[str]) -> set[tuple[str, str, int, int]]:
+    dates: set[date] = set()
+    for s in date_strings:
+        try:
+            dates.add(parse_flexible_date(s))
+        except Exception:
+            continue
+    if not dates:
+        return set()
+
+    existing = (
+        db.query(CardTransaction)
+        .filter(CardTransaction.card_id == card_id)
+        .filter(CardTransaction.date.in_(list(dates)))
+        .all()
+    )
+    out: set[tuple[str, str, int, int]] = set()
+    for t in existing:
+        out.add((t.date.isoformat(), normalize_title(t.merchant or ""), int(t.amount_yen), int(card_id)))
+    return out
+
+
+@app.post("/import/preview_text")
+def import_preview_text(payload: ImportPreviewTextIn, db: Session = Depends(get_db)):
+    card = db.query(Card).filter(Card.id == int(payload.card)).first()
+    if card is None:
+        raise HTTPException(status_code=400, detail="card not found")
+
+    rows, warnings, errors = parse_card_text_preview(payload.text)
+    existing_keys = _existing_card_keys(db, int(payload.card), [str(r.get("date", "")) for r in rows])
+    duplicate_candidates = detect_duplicates(rows, int(payload.card), existing_keys)
+    if duplicate_candidates:
+        warnings = list(warnings) + [f"重複候補: {len(duplicate_candidates)}件"]
+    missing_date = sum(1 for r in rows if not str(r.get("date", "")).strip())
+    if missing_date:
+        warnings = list(warnings) + [f"年未設定の日付が {missing_date}件あります。プレビューで補完してください"]
+
+    return {
+        "rows": rows,
+        "warnings": warnings,
+        "errors": errors,
+        "duplicate_candidates": duplicate_candidates,
+        "can_commit": len(errors) == 0,
+    }
+
+
+@app.post("/import/preview_csv")
+async def import_preview_csv(
+    card: int = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    card_obj = db.query(Card).filter(Card.id == int(card)).first()
+    if card_obj is None:
+        raise HTTPException(status_code=400, detail="card not found")
+
+    content = await file.read()
+    rows, warnings, errors = parse_card_csv_preview(content)
+    existing_keys = _existing_card_keys(db, int(card), [str(r.get("date", "")) for r in rows])
+    duplicate_candidates = detect_duplicates(rows, int(card), existing_keys)
+    if duplicate_candidates:
+        warnings = list(warnings) + [f"重複候補: {len(duplicate_candidates)}件"]
+    missing_date = sum(1 for r in rows if not str(r.get("date", "")).strip())
+    if missing_date:
+        warnings = list(warnings) + [f"年未設定の日付が {missing_date}件あります。プレビューで補完してください"]
+
+    return {
+        "rows": rows,
+        "warnings": warnings,
+        "errors": errors,
+        "duplicate_candidates": duplicate_candidates,
+        "can_commit": len(errors) == 0,
+    }
+
+
+@app.post("/import/commit")
+def import_commit(payload: ImportCommitIn, db: Session = Depends(get_db)):
+    card = db.query(Card).filter(Card.id == int(payload.card)).first()
+    if card is None:
+        raise HTTPException(status_code=400, detail="card not found")
+
+    normalized_rows: list[dict] = []
+    for i, r in enumerate(payload.rows):
+        try:
+            d = parse_flexible_date(r.date)
+            t = normalize_title(r.title)
+            p = int(r.price)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"row {i + 1} parse error: {e}")
+        normalized_rows.append({"date": d.strftime("%Y/%m/%d"), "title": t, "price": p})
+
+    existing_keys = _existing_card_keys(db, int(payload.card), [x["date"] for x in normalized_rows])
+
+    inserted = 0
+    skipped: list[dict] = []
+    seen_payload: set[tuple[str, str, int, int]] = set()
+
+    for i, row in enumerate(normalized_rows):
+        key = build_import_key(row["date"], row["title"], int(row["price"]), int(payload.card))
+        reason = None
+        if key in existing_keys:
+            reason = "existing"
+        elif key in seen_payload:
+            reason = "payload"
+
+        if reason and not payload.allow_duplicates:
+            skipped.append(
+                {
+                    "index": i,
+                    "reason": reason,
+                    "date": key[0],
+                    "title": key[1],
+                    "price": key[2],
+                }
+            )
+            continue
+
+        db.add(
+            CardTransaction(
+                card_id=int(payload.card),
+                date=parse_flexible_date(row["date"]),
+                amount_yen=int(row["price"]),
+                merchant=row["title"],
+            )
+        )
+        inserted += 1
+        seen_payload.add(key)
+
+    if inserted > 0:
+        db.commit()
+
+    return {
+        "inserted": inserted,
+        "skipped_duplicates": len(skipped),
+        "duplicates_detail": skipped,
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -209,8 +374,8 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     free_next = start_balance + this_net + next_net
     free_next2 = start_balance + this_net + next_net + next2_net
 
-    # --- 口座別集計（M1-6） ---
-    # events_* は dict の配列（e["account_id"], e["amount_yen"] がある前提）
+    # --- account summary (M1-6) ---
+    # events_* are dict rows with e["account_id"] and e["amount_yen"].
     this_by_acc = defaultdict(int)
     next_by_acc = defaultdict(int)
 
@@ -239,12 +404,12 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             }
         )
 
-    # 表示を安定させる（口座名順など）
+    # keep output order stable (by account id)
     account_summaries.sort(key=lambda x: x["id"])
 
     forecast = forecast_by_account_daily(db, user_id=1, start=this_first, end=next_last)
 
-    # --- カード（フェーズ1）---
+    # --- card section (phase 1) ---
     cards = db.query(Card).order_by(Card.id.asc()).all()
 
     card_transactions = (
@@ -263,21 +428,21 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         .all()
     )
 
-    # account_id -> "名前(kind)" の表示名辞書
-    acc_label = {int(a.id): f"{a.name}（{getattr(a, 'kind', 'bank')}）" for a in accounts}
+    # account_id -> display label (name(kind))
+    acc_label = {int(a.id): f"{a.name} ({getattr(a, 'kind', 'bank')})" for a in accounts}
 
-    # transferイベント（bank/debit）を最新から取得
+    # load recent transfer events (bank/debit)
     transfer_events = (
         db.query(CashflowEvent)
         .filter(CashflowEvent.user_id == 1)
         .filter(CashflowEvent.source == "transfer")
         .filter(CashflowEvent.transfer_id.isnot(None))
         .order_by(CashflowEvent.date.desc(), CashflowEvent.id.desc())
-        .limit(80)  # 2行で1件なので少し多めに取る
+        .limit(80)  # one transfer is two rows, so fetch a bit more
         .all()
     )
 
-    # transfer_id ごとにまとめる（from/to が揃ったら1件にする）
+    # group by transfer_id, then build one item from from/to pair
     group = {}
     for e in transfer_events:
         tid = e.transfer_id
@@ -286,28 +451,28 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         group[tid]["evs"].append(e)
 
     transfers = []
-    # date desc で並び替え
+    # sort by date desc
     for tid, g in sorted(group.items(), key=lambda kv: kv[1]["date"], reverse=True):
         evs = g["evs"]
 
-        # from = マイナス、to = プラス とみなす
+        # from is negative side, to is positive side
         ev_from = next((x for x in evs if int(x.amount_yen) < 0), None)
         ev_to = next((x for x in evs if int(x.amount_yen) > 0), None)
 
-        # 片方しかない場合はスキップ（データ不整合対策）
+        # skip incomplete pairs (defensive against broken data)
         if not ev_from or not ev_to:
             continue
 
         amt = int(ev_to.amount_yen)
 
-        # method は description か別カラムが無いので暫定で "transfer"
-        # もし create_transfer で description に bank/debit を入れてるならそこから推定もできる
+        # method is not persisted, so use a temporary label
+
         method = "transfer"
 
         transfers.append(
             {
                 "transfer_id": tid,
-                "id": ev_to.id,  # 表示用（to側のidを代表に）
+                "id": ev_to.id,  # representative id for display (to-side)
                 "date": ev_to.date,
                 "method": method,
                 "amount_yen": amt,
@@ -321,13 +486,13 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         if len(transfers) >= 30:
             break
 
-    # accounts -> 表示ラベル（名前(kind)）
-    acc_label = {int(a.id): f"{a.name}（{getattr(a, 'kind', 'bank')}）" for a in accounts}
+    # accounts -> display label (name(kind))
+    acc_label = {int(a.id): f"{a.name} ({getattr(a, 'kind', 'bank')})" for a in accounts}
 
-    # note から "charge to account_id=123" を抜く
+    # parse "charge to account_id=123" from note
     charge_re = re.compile(r"charge to account_id=(\d+)")
 
-    # クレカチャージ（CardTransaction）を最新から取る
+    # load recent card charge rows
     charge_txs = (
         db.query(CardTransaction)
         .options(joinedload(CardTransaction.card))
@@ -383,13 +548,13 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     )
 
 
-# API: 一覧（JSON）
+# API: list (JSON)
 @app.get("/api/subscriptions", response_model=list[SubscriptionOut])
 def api_list_subscriptions(db: Session = Depends(get_db)):
     return crud.list_subscriptions(db)
 
 
-# 画面フォーム: 追加
+# 逕ｻ髱｢繝輔か繝ｼ繝: 霑ｽ蜉
 @app.post("/subscriptions")
 def create_subscription(
     name: str = Form(...),
@@ -442,7 +607,7 @@ def create_subscription(
     return RedirectResponse(url="/", status_code=303)
 
 
-# 画面フォーム: 削除
+# 逕ｻ髱｢繝輔か繝ｼ繝: 蜑企勁
 @app.post("/subscriptions/{sub_id}/update")
 def update_subscription(
     sub_id: int,
@@ -512,7 +677,7 @@ def add_account(
     return RedirectResponse(url="/", status_code=303)
 
 
-# plans登録
+# plans逋ｻ骭ｲ
 @app.post("/plans")
 def add_plan(
     type: str = Form(...),            # "income" or "subscription"
@@ -607,7 +772,7 @@ def update_account(
 
 @app.post("/accounts/{account_id}/delete")
 def delete_account(account_id: int, db: Session = Depends(get_db)):
-    # 超簡易：存在したら削除
+    # delete when record exists
     acc = db.query(Account).filter(Account.id == account_id).first()
     if acc:
         db.delete(acc)
@@ -703,7 +868,7 @@ def api_forecast_accounts(
 ):
     today = date.today()
 
-    # 今月初〜来月末（既存画面の発想と同じ）
+    # from this month start to next month end
     this_first, this_last = month_range(today)
     if this_first.month == 12:
         next_first = date(this_first.year + 1, 1, 1)
@@ -772,10 +937,10 @@ def create_card_transaction(
 ):
     db = SessionLocal()
     try:
-        # カード存在チェック（雑に落ちるの防止）
+        # guard: ensure card exists to avoid crashes
         card = db.query(Card).filter(Card.id == card_id).one_or_none()
         if card is None:
-            # 画面は同じでOK。必要なら flash 的な仕組み後で。
+            # keep UX simple: redirect to top when card is not found
             return RedirectResponse(url="/", status_code=303)
 
         t = CardTransaction(
@@ -1009,7 +1174,7 @@ def create_transfer(
         account_id=int(to_account_id),
         amount_yen=amt,
         plan_id=None,
-        description=f"{description}（IN）",
+        description=f"{description} IN",
         source="transfer",
         transfer_id=tid,
         status="expected",
@@ -1017,14 +1182,14 @@ def create_transfer(
     db.add(ev_to)
 
     if method in ("bank", "debit"):
-        # from側も即時に -（口座から差し引き / デビッド＝口座即時）
+        # from側は同日に -（残高から減る）
         ev_from = CashflowEvent(
             user_id=1,
             date=date_,
             account_id=int(from_account_id),
             amount_yen=-amt,
             plan_id=None,
-            description=f"{description}（OUT）",
+            description=f"{description} OUT",
             source="transfer",
             transfer_id=tid,
             status="expected",
@@ -1032,15 +1197,15 @@ def create_transfer(
         db.add(ev_from)
 
     elif method == "card":
-        # ★クレカチャージ：from側の即時マイナスはしない（引落日に減る）
-        # 代わりに CardTransaction を追加して、既存の引落生成で bank が減る
+        # card charge: do not create immediate minus on from side
+        # add CardTransaction and let withdrawal event reduce bank later
         if not card_id:
             return RedirectResponse(url="/", status_code=303)
 
         tx = CardTransaction(
             card_id=int(card_id),
             date=date_,
-            amount_yen=amt,  # 支出=正
+            amount_yen=amt,  # expense is positive in card_transactions
             merchant=description,
             note=f"charge to account_id={to_account_id}",
         )
@@ -1130,7 +1295,8 @@ def api_forecast_free(db: Session = Depends(get_db)):
     next_first = date(this_first.year + (1 if this_first.month == 12 else 0),
                       1 if this_first.month == 12 else this_first.month + 1,
                       1)
-    end = month_range(next_first)[1]  # 来月末
+    end = month_range(next_first)[1]  # end of next month
 
     series = forecast_free_daily(db, user_id=1, start=this_first, end=end)
     return {"series": series}
+

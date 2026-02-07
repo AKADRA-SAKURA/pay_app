@@ -283,6 +283,7 @@ h1 {
 .mb-14 { margin-bottom: 14px; }
 .mt-10 { margin-top: 10px; }
 .mt-12 { margin-top: 12px; }
+.mt-8 { margin-top: 8px; }
 
 .col-span-all { grid-column: 1 / -1; }
 
@@ -887,4 +888,61 @@ tbody tr:last-child td {
   max-height: 70vh;
   overflow: auto;
   margin-top: 12px;
+}
+
+.import-textarea {
+  min-height: 180px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.import-alert {
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.import-alert ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.import-alert-warn {
+  border-color: #d3c56e;
+  background: #fffbe9;
+}
+
+.import-alert-error {
+  border-color: #e9a1a1;
+  background: #fff2f2;
+}
+
+.import-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  color: var(--muted);
+}
+
+.import-check select {
+  min-width: 180px;
+}
+
+.import-date-hint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#card-import-panel .table-wrap table {
+  min-width: 700px;
+}
+
+#card-import-panel .table-wrap input[type="text"],
+#card-import-panel .table-wrap input[type="number"],
+#card-import-panel .table-wrap input[type="date"] {
+  min-width: 100%;
 }

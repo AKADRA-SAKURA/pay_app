@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const toggleBtn = document.getElementById('menu-toggle');
   const closeBtn = document.getElementById('menu-close');
   const drawer = document.getElementById('menu-drawer');
