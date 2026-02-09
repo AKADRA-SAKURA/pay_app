@@ -271,6 +271,27 @@ h1 {
   border-left: 4px solid rgba(239, 68, 68, 0.65);
 }
 
+.hero-warning {
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: var(--danger-weak);
+  color: #991b1b;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.total-danger-banner {
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: var(--danger-weak);
+  color: #991b1b;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 /* mobile */
 @media (max-width: 640px) {
   .hero {

@@ -1,6 +1,12 @@
 <div class="card col-span-all">
   <h2>予測の推移 <span class="pill">Chart.js</span></h2>
 
+  {% if total_is_danger %}
+  <div class="total-danger-banner">
+    危険: 予測期間内で総資産がマイナスになります（最低 {{ "{:,}".format(total_min_balance) }} 円 / {{ total_min_date }}）。
+  </div>
+  {% endif %}
+
   <div class="hint" style="margin-bottom: 10px;">
     ※ 総資産と自由に使えるお金を同じグラフで表示しています。
   </div>
