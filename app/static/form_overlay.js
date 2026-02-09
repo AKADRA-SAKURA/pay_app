@@ -50,10 +50,6 @@
   });
 
   closeBtn?.addEventListener('click', close);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
-
   overlay.addEventListener('submit', (e) => {
     if (e.defaultPrevented) return;
     close();
@@ -61,10 +57,6 @@
 
   document.addEventListener('keydown', (e) => {
     if (!isOverlayOpen()) return;
-    if (e.key === 'Escape') {
-      close();
-      return;
-    }
     // Prevent browser back navigation while editing overlay forms.
     if (e.key === 'Backspace' && !isEditableTarget(e.target)) {
       e.preventDefault();

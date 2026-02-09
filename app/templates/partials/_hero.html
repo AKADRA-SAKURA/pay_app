@@ -1,4 +1,10 @@
 <div class="hero">
+  {% if total_is_danger %}
+  <div class="hero-warning col-span-all">
+    総資産予測がマイナスです。最低見込み: {{ "{:,}".format(total_min_balance) }} 円（{{ total_min_date }}）
+  </div>
+  {% endif %}
+
   <div class="hero-main">
     <div class="hero-label">今月の自由に使えるお金</div>
     <div class="hero-amount">

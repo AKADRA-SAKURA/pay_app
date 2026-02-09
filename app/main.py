@@ -431,6 +431,15 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     account_summaries.sort(key=lambda x: x["id"])
 
     forecast = forecast_by_account_daily(db, user_id=1, start=this_first, end=next_last)
+    total_series = list((forecast or {}).get("total_series") or [])
+    if total_series:
+        min_total_point = min(total_series, key=lambda p: int(p.get("balance_yen", 0)))
+        total_min_balance = int(min_total_point.get("balance_yen", 0))
+        total_min_date = str(min_total_point.get("date") or "")
+    else:
+        total_min_balance = 0
+        total_min_date = ""
+    total_is_danger = total_min_balance < 0
 
     # --- card section (phase 1) ---
     cards = db.query(Card).order_by(Card.id.asc()).all()
@@ -581,6 +590,9 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "pay_pie_this": pay_pie_this,
             "pay_pie_next": pay_pie_next,
             "advice": get_today_advice(db, user_id=1),
+            "total_min_balance": total_min_balance,
+            "total_min_date": total_min_date,
+            "total_is_danger": total_is_danger,
         },
     )
 
