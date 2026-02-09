@@ -125,6 +125,7 @@ def parse_card_csv_preview(content: bytes) -> tuple[list[dict], list[str], list[
     out: list[dict] = []
     warnings: list[str] = []
     errors: list[str] = []
+    today_str = date.today().strftime("%Y/%m/%d")
 
     for i, r in enumerate(rows, start=2):
         row = {str(k).strip(): (v or "") for k, v in r.items()}
@@ -134,14 +135,17 @@ def parse_card_csv_preview(content: bytes) -> tuple[list[dict], list[str], list[
             p = parse_money(row.get(h["price"], ""))
             title_raw = row.get(h["title"], "")
             kind = detect_payment_kind(title_raw)
+            if kind == "リボ":
+                warnings.append(f"line {i}: リボ明細をスキップしました")
+                continue
             t = _append_kind(title_raw, kind)
 
             raw_date = normalize_text_line(row.get(h["date"], ""))
             md = DATE_MD_RE.fullmatch(raw_date)
             if md and not DATE_YMD_RE.fullmatch(raw_date):
                 date_hint = f"{int(md.group('m')):02d}/{int(md.group('d')):02d}"
-                warnings.append(f"line {i}: 年がない日付 {date_hint} です。プレビューで年を入力してください")
-                out.append({"date": "", "date_hint": date_hint, "title": t, "price": p})
+                warnings.append(f"line {i}: 年がない日付 {date_hint} のため、今日 {today_str} を仮入力しました")
+                out.append({"date": today_str, "date_hint": date_hint, "title": t, "price": p})
                 continue
 
             d = parse_flexible_date(raw_date)
@@ -166,7 +170,8 @@ def _extract_date_from_line(
     if m2:
         if default_year is None:
             hint = f"{int(m2.group('m')):02d}/{int(m2.group('d')):02d}"
-            return "", m2.span(), hint
+            today_str = date.today().strftime("%Y/%m/%d")
+            return today_str, m2.span(), hint
         d = date(default_year, int(m2.group("m")), int(m2.group("d")))
         return d.strftime("%Y/%m/%d"), m2.span(), None
 
@@ -220,8 +225,16 @@ def parse_card_text_preview(text: str, *, default_year: int | None = None) -> tu
         if pending_date is not None:
             amount, a_span = _extract_amount_from_line(line)
             if amount is not None and a_span is not None:
+                line_kind = detect_payment_kind(line)
                 if pending_kind is None:
-                    pending_kind = detect_payment_kind(line)
+                    pending_kind = line_kind
+                if pending_kind == "リボ":
+                    warnings.append(f"line {idx}: リボ明細をスキップしました")
+                    pending_date = None
+                    pending_date_hint = None
+                    pending_kind = None
+                    pending_title_parts = []
+                    continue
                 title_part = normalize_text_line((line[: a_span[0]] + " " + line[a_span[1] :]).strip())
                 title = _append_kind(" ".join(pending_title_parts + [title_part]), pending_kind)
                 item = {"date": pending_date, "title": title, "price": amount}
@@ -250,6 +263,9 @@ def parse_card_text_preview(text: str, *, default_year: int | None = None) -> tu
         if d is None:
             amount, _ = _extract_amount_from_line(line)
             if amount is not None:
+                if detect_payment_kind(line) == "リボ":
+                    warnings.append(f"line {idx}: リボ明細をスキップしました")
+                    continue
                 errors.append(f"line {idx}: 金額を検出しましたが日付が見つかりません")
             continue
 
@@ -261,9 +277,15 @@ def parse_card_text_preview(text: str, *, default_year: int | None = None) -> tu
             pending_date_hint = d_hint
             pending_kind = kind
             if d_hint:
-                warnings.append(f"line {idx}: 年がない日付 {d_hint} を検出しました。プレビューで年を入力してください")
+                warnings.append(
+                    f"line {idx}: 年がない日付 {d_hint} のため、今日 {d} を仮入力しました。プレビューで編集してください"
+                )
             title_wo_date = normalize_text_line((line[: d_span[0]] + " " + line[d_span[1] :]).strip()) if d_span else ""
             pending_title_parts = [title_wo_date] if title_wo_date else []
+            continue
+
+        if kind == "リボ":
+            warnings.append(f"line {idx}: リボ明細をスキップしました")
             continue
 
         title = line
@@ -275,7 +297,9 @@ def parse_card_text_preview(text: str, *, default_year: int | None = None) -> tu
         item = {"date": d, "title": title, "price": amount}
         if d_hint:
             item["date_hint"] = d_hint
-            warnings.append(f"line {idx}: 年がない日付 {d_hint} を検出しました。プレビューで年を入力してください")
+            warnings.append(
+                f"line {idx}: 年がない日付 {d_hint} のため、今日 {d} を仮入力しました。プレビューで編集してください"
+            )
         rows.append(item)
 
     if pending_date is not None:

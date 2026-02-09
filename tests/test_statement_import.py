@@ -1,4 +1,5 @@
 ﻿import unittest
+from datetime import date
 
 from app.services.statement_import import (
     detect_duplicates,
@@ -38,15 +39,27 @@ class StatementImportTests(unittest.TestCase):
         self.assertIn("分割", rows[0]["title"])
         self.assertEqual(warnings, [])
 
-    def test_parse_card_text_missing_year_requires_user_input(self) -> None:
+    def test_parse_card_text_missing_year_defaults_today_and_editable(self) -> None:
         text = "02/10 Amazon 1,200円"
         rows, warnings, errors = parse_card_text_preview(text)
         self.assertEqual(errors, [])
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["date"], "")
+        self.assertEqual(rows[0]["date"], date.today().strftime("%Y/%m/%d"))
         self.assertEqual(rows[0]["date_hint"], "02/10")
         self.assertEqual(rows[0]["price"], 1200)
         self.assertTrue(warnings)
+
+    def test_parse_card_text_skips_revolving_rows(self) -> None:
+        text = """
+        2026/02/10 スーパー リボ 2,000円
+        2026/02/11 コンビニ 1,000円
+        """
+        rows, warnings, errors = parse_card_text_preview(text)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["date"], "2026/02/11")
+        self.assertEqual(rows[0]["price"], 1000)
+        self.assertTrue(any("リボ明細をスキップ" in w for w in warnings))
 
     def test_parse_card_csv_preview(self) -> None:
         csv_bytes = "yyyy/mm/dd,title,price\n2026/02/01,Store A,1000\n".encode("utf-8")

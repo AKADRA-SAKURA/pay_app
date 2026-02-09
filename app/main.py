@@ -19,7 +19,16 @@ from app.services.scheduler import rebuild_events as rebuild_events_scheduler
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
-from .models import Account, Card, CardTransaction, CashflowEvent, Subscription, Plan
+from .models import (
+    Account,
+    Card,
+    CardTransaction,
+    CashflowEvent,
+    Subscription,
+    Plan,
+    CardRevolving,
+    CardInstallment,
+)
 from .crud import list_accounts, create_account
 from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
 from .services.forecast import forecast_free_daily
@@ -118,6 +127,20 @@ def _parse_csv_amount(v: str) -> int:
     if s == "":
         raise ValueError("empty price")
     return int(float(s))
+
+
+def _parse_month_start(v: str) -> date:
+    s = (v or "").strip()
+    if not s:
+        raise ValueError("start_month is required")
+
+    for fmt in ("%Y-%m", "%Y-%m-%d"):
+        try:
+            d = datetime.strptime(s, fmt).date()
+            return date(d.year, d.month, 1)
+        except ValueError:
+            pass
+    raise ValueError(f"invalid month: {v}")
 
 
 def _resolve_account_id(db: Session, key: str) -> int:
@@ -419,6 +442,18 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         .limit(50)
         .all()
     )
+    card_revolvings = (
+        db.query(CardRevolving)
+        .options(joinedload(CardRevolving.card))
+        .order_by(CardRevolving.id.desc())
+        .all()
+    )
+    card_installments = (
+        db.query(CardInstallment)
+        .options(joinedload(CardInstallment.card))
+        .order_by(CardInstallment.id.desc())
+        .all()
+    )
 
     oneoffs = (
         db.query(CashflowEvent)
@@ -538,6 +573,8 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "forecast": forecast,
             "cards": cards,
             "card_transactions": card_transactions,
+            "card_revolvings": card_revolvings,
+            "card_installments": card_installments,
             "oneoffs": oneoffs,
             "transfers": transfers,
             "card_charges": card_charges,
@@ -924,6 +961,172 @@ def update_card(
 def delete_card(card_id: int, db: Session = Depends(get_db)):
     db.query(Card).filter(Card.id == card_id).delete(synchronize_session=False)
     db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-revolvings")
+def create_card_revolving(
+    card_id: int = Form(...),
+    start_month: str = Form(...),
+    remaining_yen: int = Form(...),
+    monthly_payment_yen: int = Form(...),
+    note: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    card = db.query(Card).filter(Card.id == int(card_id)).one_or_none()
+    if card is None:
+        raise HTTPException(status_code=400, detail="card not found")
+
+    try:
+        month_first = _parse_month_start(start_month)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    remaining = abs(int(remaining_yen or 0))
+    monthly = abs(int(monthly_payment_yen or 0))
+    if remaining <= 0:
+        raise HTTPException(status_code=400, detail="remaining_yen must be > 0")
+    if monthly <= 0:
+        raise HTTPException(status_code=400, detail="monthly_payment_yen must be > 0")
+
+    db.add(
+        CardRevolving(
+            card_id=int(card_id),
+            start_month=month_first,
+            remaining_yen=remaining,
+            monthly_payment_yen=monthly,
+            note=(note or None),
+        )
+    )
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-revolvings/{revolving_id}/update")
+def update_card_revolving(
+    revolving_id: int,
+    card_id: int = Form(...),
+    start_month: str = Form(...),
+    remaining_yen: int = Form(...),
+    monthly_payment_yen: int = Form(...),
+    note: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    card = db.query(Card).filter(Card.id == int(card_id)).one_or_none()
+    if card is None:
+        raise HTTPException(status_code=400, detail="card not found")
+
+    rv = db.query(CardRevolving).filter(CardRevolving.id == revolving_id).first()
+    if rv:
+        try:
+            month_first = _parse_month_start(start_month)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        remaining = abs(int(remaining_yen or 0))
+        monthly = abs(int(monthly_payment_yen or 0))
+        if remaining <= 0:
+            raise HTTPException(status_code=400, detail="remaining_yen must be > 0")
+        if monthly <= 0:
+            raise HTTPException(status_code=400, detail="monthly_payment_yen must be > 0")
+
+        rv.card_id = int(card_id)
+        rv.start_month = month_first
+        rv.remaining_yen = remaining
+        rv.monthly_payment_yen = monthly
+        rv.note = note or None
+        db.commit()
+        rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-revolvings/{revolving_id}/delete")
+def delete_card_revolving(revolving_id: int, db: Session = Depends(get_db)):
+    db.query(CardRevolving).filter(CardRevolving.id == revolving_id).delete(synchronize_session=False)
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-installments")
+def create_card_installment(
+    card_id: int = Form(...),
+    start_month: str = Form(...),
+    months: int = Form(...),
+    total_amount_yen: int = Form(...),
+    note: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    card = db.query(Card).filter(Card.id == int(card_id)).one_or_none()
+    if card is None:
+        raise HTTPException(status_code=400, detail="card not found")
+
+    try:
+        month_first = _parse_month_start(start_month)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    months_i = max(1, int(months or 1))
+    total = abs(int(total_amount_yen or 0))
+    if total <= 0:
+        raise HTTPException(status_code=400, detail="total_amount_yen must be > 0")
+
+    db.add(
+        CardInstallment(
+            card_id=int(card_id),
+            start_month=month_first,
+            months=months_i,
+            total_amount_yen=total,
+            note=(note or None),
+        )
+    )
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-installments/{installment_id}/update")
+def update_card_installment(
+    installment_id: int,
+    card_id: int = Form(...),
+    start_month: str = Form(...),
+    months: int = Form(...),
+    total_amount_yen: int = Form(...),
+    note: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    card = db.query(Card).filter(Card.id == int(card_id)).one_or_none()
+    if card is None:
+        raise HTTPException(status_code=400, detail="card not found")
+
+    inst = db.query(CardInstallment).filter(CardInstallment.id == installment_id).first()
+    if inst:
+        try:
+            month_first = _parse_month_start(start_month)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        months_i = max(1, int(months or 1))
+        total = abs(int(total_amount_yen or 0))
+        if total <= 0:
+            raise HTTPException(status_code=400, detail="total_amount_yen must be > 0")
+
+        inst.card_id = int(card_id)
+        inst.start_month = month_first
+        inst.months = months_i
+        inst.total_amount_yen = total
+        inst.note = note or None
+        db.commit()
+        rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-installments/{installment_id}/delete")
+def delete_card_installment(installment_id: int, db: Session = Depends(get_db)):
+    db.query(CardInstallment).filter(CardInstallment.id == installment_id).delete(synchronize_session=False)
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
     return RedirectResponse(url="/", status_code=303)
 
 

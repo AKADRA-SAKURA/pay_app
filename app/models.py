@@ -102,6 +102,8 @@ class Card(Base):
 
     transactions = relationship("CardTransaction", back_populates="card", cascade="all, delete-orphan")
     statements = relationship("CardStatement", back_populates="card", cascade="all, delete-orphan")
+    revolvings = relationship("CardRevolving", back_populates="card", cascade="all, delete-orphan")
+    installments = relationship("CardInstallment", back_populates="card", cascade="all, delete-orphan")
 
 
 class CardTransaction(Base):
@@ -139,6 +141,32 @@ class CardStatement(Base):
     withdraw_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     card = relationship("Card", back_populates="statements")
+
+
+class CardRevolving(Base):
+    __tablename__ = "card_revolvings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(Integer, ForeignKey("cards.id"), nullable=False)
+    start_month: Mapped[date] = mapped_column(Date, nullable=False)
+    remaining_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    monthly_payment_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    card = relationship("Card", back_populates="revolvings")
+
+
+class CardInstallment(Base):
+    __tablename__ = "card_installments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(Integer, ForeignKey("cards.id"), nullable=False)
+    start_month: Mapped[date] = mapped_column(Date, nullable=False)
+    months: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    total_amount_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    card = relationship("Card", back_populates="installments")
 
 
 class ImportBatch(Base):

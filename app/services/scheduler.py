@@ -5,7 +5,15 @@ import calendar
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Plan, CashflowEvent, Card, CardTransaction, CardStatement
+from app.models import (
+    Plan,
+    CashflowEvent,
+    Card,
+    CardTransaction,
+    CardStatement,
+    CardRevolving,
+    CardInstallment,
+)
 from app.utils.dates import resolve_day_in_month, apply_business_day_rule
 
 
@@ -15,6 +23,49 @@ def _month_add(y: int, m: int, add: int) -> tuple[int, int]:
     ny = total // 12
     nm = (total % 12) + 1
     return ny, nm
+
+
+def _month_index(d: date) -> int:
+    return d.year * 12 + (d.month - 1)
+
+
+def _month_first(d: date) -> date:
+    return d.replace(day=1)
+
+
+def _revolving_due_for_month(item: CardRevolving, month_first: date) -> int:
+    remaining = abs(int(item.remaining_yen or 0))
+    monthly = abs(int(item.monthly_payment_yen or 0))
+    if remaining <= 0 or monthly <= 0:
+        return 0
+
+    start_first = _month_first(item.start_month)
+    offset = _month_index(month_first) - _month_index(start_first)
+    if offset < 0:
+        return 0
+
+    paid_before = monthly * offset
+    if paid_before >= remaining:
+        return 0
+
+    left = remaining - paid_before
+    return min(monthly, left)
+
+
+def _installment_due_for_month(item: CardInstallment, month_first: date) -> int:
+    total = abs(int(item.total_amount_yen or 0))
+    months = max(1, int(item.months or 1))
+    if total <= 0:
+        return 0
+
+    start_first = _month_first(item.start_month)
+    offset = _month_index(month_first) - _month_index(start_first)
+    if offset < 0 or offset >= months:
+        return 0
+
+    base = total // months
+    remainder = total % months
+    return base + (1 if offset < remainder else 0)
 
 
 def occurs_monthly_interval(start: date, target_month_first: date, interval_months: int) -> bool:
@@ -154,6 +205,7 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
     """
     cards = db.query(Card).all()
     created: list[CashflowEvent] = []
+    withdraw_month_first = date(withdraw_y, withdraw_m, 1)
 
     for card in cards:
         period_start, period_end, withdraw_date = card_period_for_withdraw_month(card, withdraw_y, withdraw_m)
@@ -207,6 +259,24 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
             amount = abs(int(p.amount_yen or 0))
             for _ in _plan_occurs_in_range(p, period_start, period_end):
                 total += amount
+
+        # cardごとのリボ支払い
+        revolvings = (
+            db.query(CardRevolving)
+            .filter(CardRevolving.card_id == card.id)
+            .all()
+        )
+        for rv in revolvings:
+            total += _revolving_due_for_month(rv, withdraw_month_first)
+
+        # cardごとの分割支払い
+        installments = (
+            db.query(CardInstallment)
+            .filter(CardInstallment.card_id == card.id)
+            .all()
+        )
+        for inst in installments:
+            total += _installment_due_for_month(inst, withdraw_month_first)
 
 
         # statement（保存しておくと後で整合性が取れる）
