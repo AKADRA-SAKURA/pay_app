@@ -46,11 +46,4 @@
   });
 
   closeBtn.addEventListener("click", closeOverlay);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) closeOverlay();
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeOverlay();
-  });
 })();
