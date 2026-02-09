@@ -27,6 +27,21 @@
     overlay.style.display = 'none';
   }
 
+  function isOverlayOpen() {
+    return overlay.style.display === 'block';
+  }
+
+  function isEditableTarget(target) {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    if (target.tagName === 'TEXTAREA') return true;
+    if (target.tagName !== 'INPUT') return false;
+
+    const input = target;
+    const type = (input.getAttribute('type') || 'text').toLowerCase();
+    return !['button', 'submit', 'reset', 'checkbox', 'radio'].includes(type);
+  }
+
   document.querySelectorAll('[data-overlay-open]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const target = btn.dataset.overlayOpen;
@@ -39,7 +54,20 @@
     if (e.target === overlay) close();
   });
 
-  overlay.addEventListener('submit', () => {
+  overlay.addEventListener('submit', (e) => {
+    if (e.defaultPrevented) return;
     close();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (!isOverlayOpen()) return;
+    if (e.key === 'Escape') {
+      close();
+      return;
+    }
+    // Prevent browser back navigation while editing overlay forms.
+    if (e.key === 'Backspace' && !isEditableTarget(e.target)) {
+      e.preventDefault();
+    }
   });
 })();

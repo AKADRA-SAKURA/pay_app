@@ -1,0 +1,231 @@
+<div id="card-revolving-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>リボ登録 <span class="pill">カード別</span></h2>
+
+    {% if not cards %}
+      <div class="hint">※ 先にカードを追加してください。</div>
+    {% endif %}
+
+    <form method="post" action="/card-revolvings" class="form">
+      <label>
+        対象カード
+        <select name="card_id" required>
+          {% for c in cards %}
+            <option value="{{ c.id }}">{{ c.name }} (ID:{{ c.id }})</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        開始月（計上月）
+        <input name="start_month" type="month" required />
+      </label>
+
+      <label>
+        いまの支払うべき残高（円）
+        <input name="remaining_yen" type="number" min="1" value="1" required />
+      </label>
+
+      <label>
+        月々の返済金額（利息込み）
+        <input name="monthly_payment_yen" type="number" min="1" value="1" required />
+      </label>
+
+      <label class="col-span-all">
+        メモ
+        <input name="note" placeholder="任意" />
+      </label>
+
+      <div class="actions col-span-all">
+        {% if not cards %}
+          <button class="btn" type="submit" disabled style="opacity:.5;cursor:not-allowed;">追加</button>
+        {% else %}
+          <button class="btn" type="submit">追加</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="card-installment-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>分割登録 <span class="pill">カード別</span></h2>
+
+    {% if not cards %}
+      <div class="hint">※ 先にカードを追加してください。</div>
+    {% endif %}
+
+    <form method="post" action="/card-installments" class="form">
+      <label>
+        対象カード
+        <select name="card_id" required>
+          {% for c in cards %}
+            <option value="{{ c.id }}">{{ c.name }} (ID:{{ c.id }})</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        開始月（計上月）
+        <input name="start_month" type="month" required />
+      </label>
+
+      <label>
+        分割回数
+        <input name="months" type="number" min="1" value="2" required />
+      </label>
+
+      <label>
+        金額（合計円）
+        <input name="total_amount_yen" type="number" min="1" value="1" required />
+      </label>
+
+      <label class="col-span-all">
+        メモ
+        <input name="note" placeholder="任意" />
+      </label>
+
+      <div class="actions col-span-all">
+        {% if not cards %}
+          <button class="btn" type="submit" disabled style="opacity:.5;cursor:not-allowed;">追加</button>
+        {% else %}
+          <button class="btn" type="submit">追加</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>リボ一覧</h2>
+    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-revolving-form-template">＋ 追加</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:90px;">ID</th>
+          <th style="width:160px;">カード</th>
+          <th style="width:130px;">開始月</th>
+          <th style="width:180px;">残高（円）</th>
+          <th style="width:200px;">月返済（円）</th>
+          <th>メモ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in card_revolvings %}
+        <tr data-edit-row>
+          <td class="edit-actions sticky-col">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
+            <form id="rv-{{ r.id }}" method="post" action="/card-revolvings/{{ r.id }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">保存</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">キャンセル</button>
+            <form method="post" action="/card-revolvings/{{ r.id }}/delete" style="margin:0; display:inline;">
+              <button class="btn btn-danger" type="submit">削除</button>
+            </form>
+          </td>
+          <td>{{ r.id }}</td>
+          <td>
+            <select class="edit-input" name="card_id" form="rv-{{ r.id }}" required>
+              {% for c in cards %}
+                <option value="{{ c.id }}" {% if c.id == r.card_id %}selected{% endif %}>{{ c.name }} (ID:{{ c.id }})</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td>
+            <input class="edit-input" name="start_month" type="month" value="{{ r.start_month.strftime('%Y-%m') if r.start_month else '' }}" form="rv-{{ r.id }}" required />
+          </td>
+          <td class="money">
+            <input class="edit-input" name="remaining_yen" type="number" min="1" value="{{ r.remaining_yen }}" form="rv-{{ r.id }}" required />
+          </td>
+          <td class="money">
+            <input class="edit-input" name="monthly_payment_yen" type="number" min="1" value="{{ r.monthly_payment_yen }}" form="rv-{{ r.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="note" value="{{ r.note or '' }}" form="rv-{{ r.id }}" />
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if not card_revolvings %}
+        <tr><td colspan="7" class="empty">リボ登録はまだありません。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="hint mt-10">
+    ※ 開始月から、残高がなくなるまで月返済額をカード引落イベントに加算します。
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>分割一覧</h2>
+    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-installment-form-template">＋ 追加</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:90px;">ID</th>
+          <th style="width:160px;">カード</th>
+          <th style="width:130px;">開始月</th>
+          <th style="width:120px;">回数</th>
+          <th style="width:180px;">金額（合計円）</th>
+          <th>メモ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in card_installments %}
+        <tr data-edit-row>
+          <td class="edit-actions sticky-col">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
+            <form id="inst-{{ s.id }}" method="post" action="/card-installments/{{ s.id }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">保存</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">キャンセル</button>
+            <form method="post" action="/card-installments/{{ s.id }}/delete" style="margin:0; display:inline;">
+              <button class="btn btn-danger" type="submit">削除</button>
+            </form>
+          </td>
+          <td>{{ s.id }}</td>
+          <td>
+            <select class="edit-input" name="card_id" form="inst-{{ s.id }}" required>
+              {% for c in cards %}
+                <option value="{{ c.id }}" {% if c.id == s.card_id %}selected{% endif %}>{{ c.name }} (ID:{{ c.id }})</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td>
+            <input class="edit-input" name="start_month" type="month" value="{{ s.start_month.strftime('%Y-%m') if s.start_month else '' }}" form="inst-{{ s.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="months" type="number" min="1" value="{{ s.months }}" form="inst-{{ s.id }}" required />
+          </td>
+          <td class="money">
+            <input class="edit-input" name="total_amount_yen" type="number" min="1" value="{{ s.total_amount_yen }}" form="inst-{{ s.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="note" value="{{ s.note or '' }}" form="inst-{{ s.id }}" />
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if not card_installments %}
+        <tr><td colspan="7" class="empty">分割登録はまだありません。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="hint mt-10">
+    ※ 開始月から分割回数分、月割りした金額をカード引落イベントに加算します。
+  </div>
+</div>

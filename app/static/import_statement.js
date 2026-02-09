@@ -123,7 +123,7 @@
     body.innerHTML = '';
     rows.forEach((r, i) => {
       const dateHint = r.date_hint
-        ? `<div class="import-date-hint">元日付: ${esc(r.date_hint)}（年を入力してください）</div>`
+        ? `<div class="import-date-hint">元日付: ${esc(r.date_hint)}（年不明のため今日を仮入力。必要なら編集してください）</div>`
         : '';
       const tr = document.createElement('tr');
       tr.dataset.index = String(i);
