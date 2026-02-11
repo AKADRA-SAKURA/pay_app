@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 from collections import defaultdict
-from datetime import date, timedelta, datetime
-from sqlalchemy.orm import Session
+from datetime import date, datetime, timedelta
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from app.models import Account, CashflowEvent
-from ..crud import total_start_balance
 
 
 def _iso(d: Any) -> str:
@@ -16,17 +17,31 @@ def _iso(d: Any) -> str:
     return str(d)
 
 
+def _daterange(start: date, end: date):
+    d = start
+    while d <= end:
+        yield d
+        d += timedelta(days=1)
+
+
+def _is_account_active_on(account: Account, d: date) -> bool:
+    start_d = getattr(account, "effective_start_date", None)
+    end_d = getattr(account, "effective_end_date", None)
+    if start_d and d < start_d:
+        return False
+    if end_d and d > end_d:
+        return False
+    return True
+
+
 def forecast_by_account_events(
     db: Session,
     user_id: int,
     start: date,
     end: date,
     include_start_point: bool = True,
-    danger_threshold_yen: int = 0
+    danger_threshold_yen: int = 0,
 ) -> dict:
-    """
-    口座別に、start〜endのイベントを順に適用した「イベント時点の残高推移」を返す
-    """
     accounts = (
         db.query(Account)
         .filter(Account.user_id == user_id)
@@ -34,10 +49,15 @@ def forecast_by_account_events(
         .all()
     )
 
-    # 起点残高
-    balances = {int(a.id): int(a.balance_yen) for a in accounts}
+    account_by_id = {int(a.id): a for a in accounts}
 
-    # イベント取得（口座別に順序が安定するよう date,id）
+    # balance_yen is treated as balance at effective_start_date (if set).
+    balances = {
+        int(a.id): int(a.balance_yen) if _is_account_active_on(a, start) else 0
+        for a in accounts
+    }
+    start_balances = dict(balances)
+
     events = (
         db.query(CashflowEvent)
         .filter(
@@ -50,58 +70,129 @@ def forecast_by_account_events(
         .all()
     )
 
-    series = defaultdict(list)
+    series: dict[int, list[dict]] = defaultdict(list)
+    marker_by_date: dict[date, list[dict]] = defaultdict(list)
 
-    # start時点の点を入れる（UIが分かりやすい）
+    for a in accounts:
+        aid = int(a.id)
+        start_d = getattr(a, "effective_start_date", None)
+        end_d = getattr(a, "effective_end_date", None)
+
+        if start_d and start < start_d <= end:
+            marker_by_date[start_d].append(
+                {"kind": "activate", "account_id": aid, "balance_yen": int(a.balance_yen)}
+            )
+
+        if end_d:
+            deact_date = end_d + timedelta(days=1)
+            if start < deact_date <= end:
+                marker_by_date[deact_date].append({"kind": "deactivate", "account_id": aid})
+
     if include_start_point:
         for a in accounts:
             aid = int(a.id)
-            series[aid].append({"date": _iso(start), "balance_yen": balances[aid], "delta_yen": 0, "event_id": None})
+            series[aid].append(
+                {
+                    "date": _iso(start),
+                    "balance_yen": int(balances[aid]),
+                    "delta_yen": 0,
+                    "event_id": None,
+                }
+            )
 
-    # イベント適用
+    events_by_date: dict[date, list[CashflowEvent]] = defaultdict(list)
     for ev in events:
-        aid = int(ev.account_id)
-        if aid not in balances:
-            # 口座削除などで参照が飛んでる場合はスキップ
-            continue
-        delta = int(ev.amount_yen)
-        balances[aid] += delta
-        series[aid].append(
+        events_by_date[ev.date].append(ev)
+
+    total_balance = sum(int(v) for v in start_balances.values())
+    total_series: list[dict] = []
+    if include_start_point:
+        total_series.append(
             {
-                "date": ev.date,
-                "balance_yen": balances[aid],
-                "delta_yen": delta,
-                "event_id": int(ev.id),
+                "date": _iso(start),
+                "balance_yen": int(total_balance),
+                "delta_yen": 0,
+                "event_id": None,
             }
         )
 
-    # 合計残高も出したいなら（口座合算）
-    total_start = sum(int(a.balance_yen) for a in accounts)
-    total_series = []
-    if include_start_point:
-        total_series.append({"date": _iso(start), "balance_yen": total_start, "delta_yen": 0, "event_id": None})
+    timeline_dates = sorted(set(events_by_date.keys()) | set(marker_by_date.keys()))
+    for d in timeline_dates:
+        for marker in marker_by_date.get(d, []):
+            aid = int(marker["account_id"])
+            if aid not in balances:
+                continue
 
-    total_balance = total_start
-    for ev in events:
-        total_balance += int(ev.amount_yen)
-        total_series.append(
-            {"date": _iso(ev.date), "balance_yen": total_balance, "delta_yen": int(ev.amount_yen), "event_id": int(ev.id)}
-        )
+            before = int(balances[aid])
+            if marker["kind"] == "activate":
+                after = int(marker["balance_yen"])
+            else:
+                after = 0
+
+            delta = after - before
+            balances[aid] = after
+            series[aid].append(
+                {
+                    "date": _iso(d),
+                    "balance_yen": int(after),
+                    "delta_yen": int(delta),
+                    "event_id": None,
+                }
+            )
+
+            total_balance += delta
+            total_series.append(
+                {
+                    "date": _iso(d),
+                    "balance_yen": int(total_balance),
+                    "delta_yen": int(delta),
+                    "event_id": None,
+                }
+            )
+
+        for ev in events_by_date.get(d, []):
+            aid = int(ev.account_id)
+            acc = account_by_id.get(aid)
+            if acc is None:
+                continue
+            if not _is_account_active_on(acc, d):
+                continue
+
+            delta = int(ev.amount_yen)
+            balances[aid] += delta
+            series[aid].append(
+                {
+                    "date": _iso(d),
+                    "balance_yen": int(balances[aid]),
+                    "delta_yen": int(delta),
+                    "event_id": int(ev.id),
+                }
+            )
+
+            total_balance += delta
+            total_series.append(
+                {
+                    "date": _iso(d),
+                    "balance_yen": int(total_balance),
+                    "delta_yen": int(delta),
+                    "event_id": int(ev.id),
+                }
+            )
 
     accounts_out = []
     for a in accounts:
         aid = int(a.id)
-        s = series[aid]  # list
-
-        summary = _summarize_series(s, start, int(a.balance_yen), danger_threshold_yen)
-
-        accounts_out.append({
-            "account_id": aid,
-            "name": a.name,
-            "start_balance_yen": int(a.balance_yen),
-            "summary": summary,
-            "series": s,
-        })
+        s = list(series.get(aid) or [])
+        summary = _summarize_series(s, start, int(start_balances[aid]), danger_threshold_yen)
+        accounts_out.append(
+            {
+                "account_id": aid,
+                "name": a.name,
+                "start_balance_yen": int(start_balances[aid]),
+                "summary": summary,
+                "series": s,
+            }
+        )
 
     return {
         "start": start,
@@ -111,24 +202,13 @@ def forecast_by_account_events(
     }
 
 
-def _daterange(start: date, end: date):
-    d = start
-    while d <= end:
-        yield d
-        d += timedelta(days=1)
-
-
 def forecast_by_account_daily(db: Session, user_id: int, start: date, end: date) -> dict:
-    """
-    forecast_by_account_events の結果を、日次で穴埋めして返す
-    """
     base = forecast_by_account_events(db, user_id=user_id, start=start, end=end, include_start_point=True)
 
     out_accounts = []
 
     for acc in base["accounts"]:
-        # イベント時点のバランスを map 化（キーは ISO 文字列に統一）
-        bal_by_date = {}
+        bal_by_date: dict[str, int] = {}
         for p in acc["series"]:
             bal_by_date[str(p["date"])] = int(p["balance_yen"])
 
@@ -138,8 +218,8 @@ def forecast_by_account_daily(db: Session, user_id: int, start: date, end: date)
         for d in _daterange(start, end):
             key = _iso(d)
             if key in bal_by_date:
-                last_balance = bal_by_date[key]
-            daily.append({"date": key, "balance_yen": last_balance})
+                last_balance = int(bal_by_date[key])
+            daily.append({"date": key, "balance_yen": int(last_balance)})
 
         out_accounts.append(
             {
@@ -150,27 +230,12 @@ def forecast_by_account_daily(db: Session, user_id: int, start: date, end: date)
             }
         )
 
-    # total_series も ISO 文字列キーで統一して穴埋め
-    total_map = {}
-    for p in base["total_series"]:
-        total_map[str(p["date"])] = int(p["balance_yen"])
-
-    total_daily = []
-    last_total = total_map.get(_iso(start), 0)
-
-    for d in _daterange(start, end):
-        key = _iso(d)
-        if key in total_map:
-            last_total = total_map[key]
-        total_daily.append({"date": key, "balance_yen": last_total})
-
-    # total_daily を accounts の daily series から作り直す（確実に合う）
-    total_by_date = {}
+    total_by_date: dict[str, int] = {}
     for acc in out_accounts:
         for p in acc["series"]:
             total_by_date[p["date"]] = total_by_date.get(p["date"], 0) + int(p["balance_yen"])
 
-    total_daily = [{"date": d, "balance_yen": total_by_date[d]} for d in sorted(total_by_date.keys())]
+    total_daily = [{"date": d, "balance_yen": int(total_by_date[d])} for d in sorted(total_by_date.keys())]
 
     return {"start": start, "end": end, "accounts": out_accounts, "total_series": total_daily}
 
@@ -196,29 +261,5 @@ def _summarize_series(series, start_date, start_balance, danger_threshold_yen=0)
 
 
 def forecast_free_daily(db: Session, user_id: int, start: date, end: date) -> list[dict]:
-    # 口座合算の開始残高（現金やPayPay等も含めたいなら、ここをtotal化）
-    start_balance = total_start_balance(db, user_id)  # 既存のやつがある前提
-
-    # 期間内イベントを日付ごとに合算（口座合算）
-    rows = (
-        db.query(CashflowEvent.date, CashflowEvent.amount_yen)
-        .filter(CashflowEvent.user_id == user_id)
-        .filter(CashflowEvent.date >= start)
-        .filter(CashflowEvent.date <= end)
-        .all()
-    )
-
-    delta_by_date = {}
-    for d, amt in rows:
-        key = _iso(d)            # "YYYY-MM-DD"
-        delta_by_date[key] = delta_by_date.get(key, 0) + int(amt)
-
-    series = []
-    bal = int(start_balance)
-
-    for d in _daterange(start, end):
-        key = _iso(d)
-        bal += delta_by_date.get(key, 0)
-        series.append({"date": key, "balance_yen": bal})
-
-    return series
+    base = forecast_by_account_daily(db, user_id=user_id, start=start, end=end)
+    return list(base.get("total_series") or [])

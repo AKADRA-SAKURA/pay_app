@@ -2,7 +2,7 @@
 
 <div id="account-form-template" class="overlay-form-template">
   <div class="card">
-    <h2>登録口座 <span class="pill">計算の起点</span></h2>
+    <h2>登録口座 <span class="pill">銀行・現金など</span></h2>
 
     <form method="post" action="/accounts" class="form">
       <label>
@@ -11,19 +11,29 @@
       </label>
 
       <label>
-        現在残高（円）
-        <input name="balance_yen" type="number" min="0" value="0" required />
+        残高（円）
+        <input name="balance_yen" type="number" value="0" required />
       </label>
 
       <label>
-        種類
+        種別
         <select name="kind" required>
-          <option value="bank">口座</option>
+          <option value="bank">銀行</option>
           <option value="cash">現金</option>
           <option value="barcode">バーコード決済</option>
           <option value="emoney">電子マネー</option>
           <option value="nisa">NISA</option>
         </select>
+      </label>
+
+      <label>
+        有効開始日
+        <input name="effective_start_date" type="date" required />
+      </label>
+
+      <label>
+        有効終了日（空欄で無期限）
+        <input name="effective_end_date" type="date" />
       </label>
 
       <div class="actions col-span-all">
@@ -48,8 +58,10 @@
           <th class="sticky-col" style="width: 140px">操作</th>
           <th style="width: 70px">ID</th>
           <th>口座名</th>
-          <th style="width: 160px">現在残高</th>
-          <th style="width: 120px">種類</th>
+          <th style="width: 160px">残高（円）</th>
+          <th style="width: 120px">種別</th>
+          <th style="width: 150px">有効開始日</th>
+          <th style="width: 170px">有効終了日</th>
         </tr>
       </thead>
       <tbody>
@@ -70,23 +82,29 @@
             <input class="edit-input" name="name" value="{{ a.name }}" form="acc-{{ a.id }}" required />
           </td>
           <td class="money">
-            <input class="edit-input" name="balance_yen" type="number" min="0" value="{{ a.balance_yen }}" form="acc-{{ a.id }}" required />
+            <input class="edit-input" name="balance_yen" type="number" value="{{ a.balance_yen }}" form="acc-{{ a.id }}" required />
           </td>
           <td>
             <select class="edit-input" name="kind" form="acc-{{ a.id }}" required>
-              <option value="bank" {% if a.kind == "bank" %}selected{% endif %}>口座</option>
+              <option value="bank" {% if a.kind == "bank" %}selected{% endif %}>銀行</option>
               <option value="cash" {% if a.kind == "cash" %}selected{% endif %}>現金</option>
               <option value="barcode" {% if a.kind == "barcode" %}selected{% endif %}>バーコード決済</option>
               <option value="emoney" {% if a.kind == "emoney" %}selected{% endif %}>電子マネー</option>
               <option value="nisa" {% if a.kind == "nisa" %}selected{% endif %}>NISA</option>
             </select>
           </td>
+          <td>
+            <input class="edit-input" name="effective_start_date" type="date" value="{{ a.effective_start_date.isoformat() if a.effective_start_date else '' }}" form="acc-{{ a.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="effective_end_date" type="date" value="{{ a.effective_end_date.isoformat() if a.effective_end_date else '' }}" form="acc-{{ a.id }}" />
+          </td>
         </tr>
         {% endfor %}
 
         {% if not accounts %}
         <tr>
-          <td colspan="5" class="empty">口座がありません。まず1つ追加してください。</td>
+          <td colspan="7" class="empty">口座がありません。先に追加してください。</td>
         </tr>
         {% endif %}
       </tbody>

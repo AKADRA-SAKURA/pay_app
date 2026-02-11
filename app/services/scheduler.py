@@ -34,6 +34,27 @@ def _month_first(d: date) -> date:
     return d.replace(day=1)
 
 
+def _is_within_effective(d: date, start_d: date | None, end_d: date | None) -> bool:
+    if start_d and d < start_d:
+        return False
+    if end_d and d > end_d:
+        return False
+    return True
+
+
+def _clip_range_to_effective(
+    start: date,
+    end: date,
+    start_d: date | None,
+    end_d: date | None,
+) -> tuple[date, date] | None:
+    clipped_start = start_d if start_d and start_d > start else start
+    clipped_end = end_d if end_d and end_d < end else end
+    if clipped_start > clipped_end:
+        return None
+    return clipped_start, clipped_end
+
+
 def _revolving_due_for_month(item: CardRevolving, month_first: date) -> int:
     remaining = abs(int(item.remaining_yen or 0))
     monthly = abs(int(item.monthly_payment_yen or 0))
@@ -307,12 +328,20 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
 
     for card in cards:
         period_start, period_end, withdraw_date = card_period_for_withdraw_month(card, withdraw_y, withdraw_m)
+        card_start = getattr(card, "effective_start_date", None)
+        card_end = getattr(card, "effective_end_date", None)
+        valid_period = _clip_range_to_effective(period_start, period_end, card_start, card_end)
+        has_valid_period = valid_period is not None
+        valid_start, valid_end = valid_period if valid_period is not None else (period_start, period_end)
 
-        total = db.query(func.coalesce(func.sum(CardTransaction.amount_yen), 0)).filter(
-            CardTransaction.card_id == card.id,
-            CardTransaction.date >= period_start,
-            CardTransaction.date <= period_end,
-        ).scalar()
+        if has_valid_period:
+            total = db.query(func.coalesce(func.sum(CardTransaction.amount_yen), 0)).filter(
+                CardTransaction.card_id == card.id,
+                CardTransaction.date >= valid_start,
+                CardTransaction.date <= valid_end,
+            ).scalar()
+        else:
+            total = 0
 
         total = int(total or 0)
 
@@ -355,8 +384,9 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
             if p.type == "income":
                 continue
             amount = abs(int(p.amount_yen or 0))
-            for _ in _plan_occurs_in_range(p, period_start, period_end):
-                total += amount
+            for occ_date in _plan_occurs_in_range(p, period_start, period_end):
+                if _is_within_effective(occ_date, card_start, card_end):
+                    total += amount
 
         # subscription (payment_method=card) もカード引落に加算
         subs = (
@@ -369,7 +399,9 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
             amount = abs(int(getattr(s, "amount_yen", 0) or 0))
             if amount <= 0:
                 continue
-            total += amount * len(_subscription_occurrences_in_range(s, period_start, period_end))
+            occurrences = _subscription_occurrences_in_range(s, period_start, period_end)
+            valid_count = sum(1 for d in occurrences if _is_within_effective(d, card_start, card_end))
+            total += amount * valid_count
 
         # cardごとのリボ支払い
         revolvings = (

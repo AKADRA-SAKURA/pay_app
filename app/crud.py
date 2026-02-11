@@ -38,8 +38,21 @@ def delete_subscription(db: Session, sub_id: int) -> None:
 def list_accounts(db):
     return db.query(Account).order_by(Account.id).all()
 
-def create_account(db, name: str, balance_yen: int, kind: str = "bank"):
-    acc = Account(name=name, balance_yen=balance_yen, kind=kind)
+def create_account(
+    db,
+    name: str,
+    balance_yen: int,
+    kind: str = "bank",
+    effective_start_date: date | None = None,
+    effective_end_date: date | None = None,
+):
+    acc = Account(
+        name=name,
+        balance_yen=balance_yen,
+        kind=kind,
+        effective_start_date=effective_start_date,
+        effective_end_date=effective_end_date,
+    )
     db.add(acc)
     db.commit()
     db.refresh(acc)
@@ -99,9 +112,21 @@ def list_events_between(db, user_id: int, start: date, end: date):
         .all()
     )
 
-def total_start_balance(db, user_id: int = 1) -> int:
+def _account_is_active_on(account: Account, as_of: date) -> bool:
+    start_d = getattr(account, "effective_start_date", None)
+    end_d = getattr(account, "effective_end_date", None)
+    if start_d and as_of < start_d:
+        return False
+    if end_d and as_of > end_d:
+        return False
+    return True
+
+
+def total_start_balance(db, user_id: int = 1, as_of: date | None = None) -> int:
     accounts = db.query(Account).filter(Account.user_id == user_id).all()
-    return sum(int(a.balance_yen) for a in accounts)
+    if as_of is None:
+        return sum(int(a.balance_yen) for a in accounts)
+    return sum(int(a.balance_yen) for a in accounts if _account_is_active_on(a, as_of))
 
 def delete_plan(db, plan_id: int, user_id: int = 1) -> None:
     p = db.query(Plan).filter(Plan.id == plan_id, Plan.user_id == user_id).first()

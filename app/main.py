@@ -85,6 +85,26 @@ def _ensure_subscription_columns() -> None:
 
 _ensure_subscription_columns()
 
+
+def _ensure_account_card_columns() -> None:
+    if not str(engine.url).startswith("sqlite"):
+        return
+    with engine.connect() as conn:
+        acc_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(accounts)")).fetchall()]
+        if "effective_start_date" not in acc_cols:
+            conn.execute(text("ALTER TABLE accounts ADD COLUMN effective_start_date DATE"))
+        if "effective_end_date" not in acc_cols:
+            conn.execute(text("ALTER TABLE accounts ADD COLUMN effective_end_date DATE"))
+
+        card_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(cards)")).fetchall()]
+        if "effective_start_date" not in card_cols:
+            conn.execute(text("ALTER TABLE cards ADD COLUMN effective_start_date DATE"))
+        if "effective_end_date" not in card_cols:
+            conn.execute(text("ALTER TABLE cards ADD COLUMN effective_end_date DATE"))
+
+
+_ensure_account_card_columns()
+
 app = FastAPI(title="家計簿・口座管理マネージャー（ローカル）")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -143,6 +163,28 @@ def _parse_month_start(v: str) -> date:
         except ValueError:
             pass
     raise ValueError(f"invalid month: {v}")
+
+
+def _parse_optional_date(v: str | None, field_name: str) -> date | None:
+    s = (v or "").strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be YYYY-MM-DD")
+
+
+def _parse_required_date(v: str | None, field_name: str) -> date:
+    d = _parse_optional_date(v, field_name)
+    if d is None:
+        raise HTTPException(status_code=400, detail=f"{field_name} is required")
+    return d
+
+
+def _ensure_effective_range(start_d: date | None, end_d: date | None, target: str) -> None:
+    if start_d and end_d and end_d < start_d:
+        raise HTTPException(status_code=400, detail=f"{target} end date must be on/after start date")
 
 
 def _parse_bulk_ids(ids: str) -> list[int]:
@@ -403,7 +445,16 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     pay_pie_next = _build_payment_pie(events_next)
     from collections import defaultdict
 
-    start_balance = crud.total_start_balance(db, 1)
+    def _account_active_on(acc: Account, d: date) -> bool:
+        start_d = getattr(acc, "effective_start_date", None)
+        end_d = getattr(acc, "effective_end_date", None)
+        if start_d and d < start_d:
+            return False
+        if end_d and d > end_d:
+            return False
+        return True
+
+    start_balance = crud.total_start_balance(db, 1, as_of=this_first)
     this_net = sum(e["amount_yen"] for e in events_this)
     next_net = sum(e["amount_yen"] for e in events_next)
     next2_net = sum(e["amount_yen"] for e in events_next2)
@@ -426,7 +477,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     account_summaries = []
     for a in accounts:
         acc_id = int(a.id)
-        start = int(a.balance_yen)
+        start = int(a.balance_yen) if _account_active_on(a, this_first) else 0
         this_net_acc = this_by_acc[acc_id]
         next_net_acc = next_by_acc[acc_id]
 
@@ -451,6 +502,10 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         min_total_point = min(total_series, key=lambda p: int(p.get("balance_yen", 0)))
         total_min_balance = int(min_total_point.get("balance_yen", 0))
         total_min_date = str(min_total_point.get("date") or "")
+        by_date = {str(p.get("date")): int(p.get("balance_yen", 0)) for p in total_series}
+        free_this = by_date.get(this_last.isoformat(), free_this)
+        free_next = by_date.get(next_last.isoformat(), free_next)
+        free_next2 = by_date.get(next2_last.isoformat(), free_next2)
     else:
         total_min_balance = 0
         total_min_date = ""
@@ -753,9 +808,22 @@ def add_account(
     name: str = Form(...),
     balance_yen: int = Form(...),
     kind: str = Form("bank"),
+    effective_start_date: str = Form(...),
+    effective_end_date: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    create_account(db, name=name, balance_yen=balance_yen, kind=kind)
+    start_d = _parse_required_date(effective_start_date, "effective_start_date")
+    end_d = _parse_optional_date(effective_end_date, "effective_end_date")
+    _ensure_effective_range(start_d, end_d, "account")
+
+    create_account(
+        db,
+        name=name,
+        balance_yen=balance_yen,
+        kind=kind,
+        effective_start_date=start_d,
+        effective_end_date=end_d,
+    )
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -841,13 +909,21 @@ def update_account(
     name: str = Form(...),
     balance_yen: int = Form(...),
     kind: str = Form("bank"),
+    effective_start_date: str = Form(...),
+    effective_end_date: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    start_d = _parse_required_date(effective_start_date, "effective_start_date")
+    end_d = _parse_optional_date(effective_end_date, "effective_end_date")
+    _ensure_effective_range(start_d, end_d, "account")
+
     acc = db.query(Account).filter(Account.id == account_id).first()
     if acc:
         acc.name = name
         acc.balance_yen = int(balance_yen)
         acc.kind = kind
+        acc.effective_start_date = start_d
+        acc.effective_end_date = end_d
         db.commit()
     return RedirectResponse(url="/", status_code=303)
 
@@ -971,12 +1047,20 @@ def create_card(
     closing_day: int = Form(...),
     payment_day: int = Form(...),
     payment_account_id: int = Form(...),
+    effective_start_date: str = Form(...),
+    effective_end_date: str | None = Form(None),
 ):
+    start_d = _parse_required_date(effective_start_date, "effective_start_date")
+    end_d = _parse_optional_date(effective_end_date, "effective_end_date")
+    _ensure_effective_range(start_d, end_d, "card")
+
     c = Card(
         name=name,
         closing_day=int(closing_day),
         payment_day=int(payment_day),
         payment_account_id=int(payment_account_id),
+        effective_start_date=start_d,
+        effective_end_date=end_d,
     )
     db.add(c)
     db.commit()
@@ -990,14 +1074,22 @@ def update_card(
     closing_day: int = Form(...),
     payment_day: int = Form(...),
     payment_account_id: int = Form(...),
+    effective_start_date: str = Form(...),
+    effective_end_date: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    start_d = _parse_required_date(effective_start_date, "effective_start_date")
+    end_d = _parse_optional_date(effective_end_date, "effective_end_date")
+    _ensure_effective_range(start_d, end_d, "card")
+
     c = db.query(Card).filter(Card.id == card_id).first()
     if c:
         c.name = name
         c.closing_day = int(closing_day)
         c.payment_day = int(payment_day)
         c.payment_account_id = int(payment_account_id)
+        c.effective_start_date = start_d
+        c.effective_end_date = end_d
         db.commit()
     return RedirectResponse(url="/", status_code=303)
 
