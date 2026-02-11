@@ -3,6 +3,7 @@ from datetime import date
 
 from app.services.statement_import import (
     detect_duplicates,
+    normalize_title,
     parse_card_csv_preview,
     parse_flexible_date,
     parse_card_text_preview,
@@ -60,6 +61,29 @@ class StatementImportTests(unittest.TestCase):
         self.assertEqual(rows[0]["date"], "2026/02/11")
         self.assertEqual(rows[0]["price"], 1000)
         self.assertTrue(any("リボ明細をスキップ" in w for w in warnings))
+
+    def test_parse_card_text_japanese_ymd_date(self) -> None:
+        text = "2026年2月4日 カ)マ-チカンパニー - 10120"
+        rows, warnings, errors = parse_card_text_preview(text)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["date"], "2026/02/04")
+        self.assertEqual(rows[0]["price"], 10120)
+        self.assertNotIn("10120", rows[0]["title"])
+
+    def test_parse_card_text_tabular_prefers_place_as_title(self) -> None:
+        text = (
+            "ご利用年月日\tご利用場所\tご利用内容\tご利用金額\n"
+            "2026年2月4日\tカ）マ－チカンパニ－\t－\t10120\n"
+        )
+        rows, warnings, errors = parse_card_text_preview(text)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["date"], "2026/02/04")
+        self.assertEqual(rows[0]["price"], 10120)
+        self.assertEqual(rows[0]["title"], normalize_title("カ）マ－チカンパニ－"))
 
     def test_parse_card_csv_preview(self) -> None:
         csv_bytes = "yyyy/mm/dd,title,price\n2026/02/01,Store A,1000\n".encode("utf-8")
