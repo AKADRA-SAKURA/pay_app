@@ -143,6 +143,19 @@ def _parse_month_start(v: str) -> date:
     raise ValueError(f"invalid month: {v}")
 
 
+def _parse_bulk_ids(ids: str) -> list[int]:
+    parsed_ids: list[int] = []
+    for part in re.split(r"[,\s]+", (ids or "").strip()):
+        if not part:
+            continue
+        if not part.isdigit():
+            continue
+        v = int(part)
+        if v > 0:
+            parsed_ids.append(v)
+    return sorted(set(parsed_ids))
+
+
 def _resolve_account_id(db: Session, key: str) -> int:
     s = (key or "").strip()
     if not s:
@@ -1061,6 +1074,21 @@ def delete_card_revolving(revolving_id: int, db: Session = Depends(get_db)):
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/card-revolvings/bulk-delete")
+def bulk_delete_card_revolvings(
+    ids: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    unique_ids = _parse_bulk_ids(ids)
+    if not unique_ids:
+        return RedirectResponse(url="/", status_code=303)
+
+    db.query(CardRevolving).filter(CardRevolving.id.in_(unique_ids)).delete(synchronize_session=False)
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.post("/card-installments")
 def create_card_installment(
     card_id: int = Form(...),
@@ -1137,6 +1165,21 @@ def update_card_installment(
 @app.post("/card-installments/{installment_id}/delete")
 def delete_card_installment(installment_id: int, db: Session = Depends(get_db)):
     db.query(CardInstallment).filter(CardInstallment.id == installment_id).delete(synchronize_session=False)
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-installments/bulk-delete")
+def bulk_delete_card_installments(
+    ids: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    unique_ids = _parse_bulk_ids(ids)
+    if not unique_ids:
+        return RedirectResponse(url="/", status_code=303)
+
+    db.query(CardInstallment).filter(CardInstallment.id.in_(unique_ids)).delete(synchronize_session=False)
     db.commit()
     rebuild_events_scheduler(db, user_id=1)
     return RedirectResponse(url="/", status_code=303)
@@ -1244,6 +1287,20 @@ def delete_card_transaction(tx_id: int):
     finally:
         db.close()
 
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/card-transactions/bulk-delete")
+def bulk_delete_card_transactions(
+    ids: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    unique_ids = _parse_bulk_ids(ids)
+    if not unique_ids:
+        return RedirectResponse(url="/", status_code=303)
+
+    db.query(CardTransaction).filter(CardTransaction.id.in_(unique_ids)).delete(synchronize_session=False)
+    db.commit()
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -1362,6 +1419,23 @@ def update_oneoff(
 def delete_oneoff(event_id: int, db: Session = Depends(get_db)):
     db.query(CashflowEvent).filter(
         CashflowEvent.id == event_id,
+        CashflowEvent.source == "oneoff",
+    ).delete(synchronize_session=False)
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/oneoff/bulk-delete")
+def bulk_delete_oneoff(
+    ids: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    unique_ids = _parse_bulk_ids(ids)
+    if not unique_ids:
+        return RedirectResponse(url="/", status_code=303)
+
+    db.query(CashflowEvent).filter(
+        CashflowEvent.id.in_(unique_ids),
         CashflowEvent.source == "oneoff",
     ).delete(synchronize_session=False)
     db.commit()

@@ -119,16 +119,23 @@
   <div class="card-head">
     <h2>カード取引一覧 <span class="pill">最新50件</span></h2>
     <div class="card-head-actions">
+      <form id="card-tx-bulk-delete-form" method="post" action="/card-transactions/bulk-delete" style="margin:0; display:inline;">
+        <input id="card-tx-bulk-delete-ids" type="hidden" name="ids" value="" />
+        <button id="card-tx-bulk-delete-btn" class="btn btn-danger" type="button" disabled>選択削除</button>
+      </form>
       <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="card-import-form-template">⤴ テキスト/CSV取込</button>
       <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-transaction-form-template">＋ 追加</button>
     </div>
   </div>
 
   <div class="table-wrap">
-    <table>
+    <table id="card-transactions-table">
       <thead>
         <tr>
           <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:70px;">
+            <input id="card-tx-select-all" type="checkbox" aria-label="全選択" />
+          </th>
           <th style="width:90px;">ID</th>
           <th style="width:140px;">日付</th>
           <th>加盟店</th>
@@ -148,6 +155,9 @@
             <form method="post" action="/card-transactions/{{ t.id }}/delete" style="margin:0; display:inline;">
               <button class="btn btn-danger" type="submit">削除</button>
             </form>
+          </td>
+          <td>
+            <input class="card-tx-select" type="checkbox" data-tx-id="{{ t.id }}" aria-label="ID{{ t.id }}を選択" />
           </td>
           <td>{{ t.id }}</td>
           <td>
@@ -170,7 +180,7 @@
         {% endfor %}
 
         {% if not card_transactions %}
-        <tr><td colspan="6" class="empty">取引がありません。</td></tr>
+        <tr><td colspan="7" class="empty">取引がありません。</td></tr>
         {% endif %}
       </tbody>
     </table>
