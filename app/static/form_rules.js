@@ -30,6 +30,25 @@
     }
   }
 
+  function softLockField(el, locked) {
+    if (!el) return;
+
+    el.classList.toggle('is-locked', locked);
+    el.setAttribute('aria-disabled', locked ? 'true' : 'false');
+    if (locked) {
+      el.dataset.locked = '1';
+      el.tabIndex = -1;
+    } else {
+      delete el.dataset.locked;
+      el.removeAttribute('tabindex');
+    }
+
+    const label = el.closest('label');
+    if (label) {
+      label.classList.toggle('field-locked', locked);
+    }
+  }
+
   function applyPlan(container) {
     const freq = container.querySelector('[name="freq"]')?.value || 'monthly';
     const interval = container.querySelector('[name="interval_months"]');
@@ -88,6 +107,21 @@
     }
   }
 
+  function applyTransfer(container) {
+    const method = container.querySelector('[name="method"]')?.value || 'bank';
+    const from = container.querySelector('[name="from_account_id"]');
+    const card = container.querySelector('[name="card_id"]');
+
+    if (method === 'card') {
+      // card charge still submits from_account_id in backend, so keep value and only lock UI.
+      softLockField(from, true);
+      lockField(card, false);
+    } else {
+      softLockField(from, false);
+      lockField(card, true);
+    }
+  }
+
   function bind(container, kind) {
     const apply = kind === 'plan' ? applyPlan : applySub;
     apply(container);
@@ -101,9 +135,22 @@
     });
   }
 
+  function bindTransfer(container) {
+    applyTransfer(container);
+
+    container.addEventListener('change', (e) => {
+      const name = e.target?.name;
+      if (!name) return;
+      if (name === 'method') {
+        applyTransfer(container);
+      }
+    });
+  }
+
   function init() {
     document.querySelectorAll('form[action="/plans"]').forEach((form) => bind(form, 'plan'));
     document.querySelectorAll('form[action="/subscriptions"]').forEach((form) => bind(form, 'sub'));
+    document.querySelectorAll('form[action="/transfer"]').forEach((form) => bindTransfer(form));
 
     document.querySelectorAll('tr[data-edit-row]').forEach((row) => {
       if (row.querySelector('form[id^="plan-"]')) bind(row, 'plan');
