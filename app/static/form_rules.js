@@ -81,16 +81,24 @@
   function applySub(container) {
     const freq = container.querySelector('[name="freq"]')?.value || 'monthly';
     const interval = container.querySelector('[name="interval_months"]');
+    const intervalWeeks = container.querySelector('[name="interval_weeks"]');
     const month = container.querySelector('[name="billing_month"]');
 
     if (freq === 'monthly') {
       lockField(interval, true);
+      lockField(intervalWeeks, true);
       lockField(month, true);
     } else if (freq === 'yearly') {
       lockField(interval, true);
+      lockField(intervalWeeks, true);
       lockField(month, false);
     } else if (freq === 'monthly_interval') {
       lockField(interval, false);
+      lockField(intervalWeeks, true);
+      lockField(month, true);
+    } else if (freq === 'weekly_interval') {
+      lockField(interval, true);
+      lockField(intervalWeeks, false);
       lockField(month, true);
     }
 

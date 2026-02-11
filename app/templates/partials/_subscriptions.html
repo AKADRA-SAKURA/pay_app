@@ -26,12 +26,18 @@
           <option value="monthly">毎月</option>
           <option value="yearly">毎年</option>
           <option value="monthly_interval">nヶ月ごと</option>
+          <option value="weekly_interval">n週間ごと</option>
         </select>
       </label>
 
       <label>
         間隔（月）
         <input name="interval_months" type="number" min="1" value="1" />
+      </label>
+
+      <label>
+        間隔（週）
+        <input name="interval_weeks" type="number" min="1" value="1" />
       </label>
 
       <label>
@@ -73,7 +79,7 @@
       </div>
 
       <div class="hint" style="grid-column: 1 / -1">
-        ※ yearly は月を使用。monthly_interval は基準月と間隔を使用します。
+        ※ yearly は月を使用。monthly_interval は間隔(月)を使用。weekly_interval は間隔(週)を使用します。
       </div>
     </form>
   </div>
@@ -99,6 +105,7 @@
           <th style="width: 120px">頻度</th>
           <th style="width: 120px">月</th>
           <th style="width: 120px">間隔(月)</th>
+          <th style="width: 120px">間隔(週)</th>
           <th style="width: 140px">支払い方法</th>
           <th style="width: 200px">口座/カード</th>
         </tr>
@@ -132,6 +139,7 @@
               <option value="monthly" {% if s.freq == "monthly" %}selected{% endif %}>毎月</option>
               <option value="yearly" {% if s.freq == "yearly" %}selected{% endif %}>毎年</option>
               <option value="monthly_interval" {% if s.freq == "monthly_interval" %}selected{% endif %}>nヶ月ごと</option>
+              <option value="weekly_interval" {% if s.freq == "weekly_interval" %}selected{% endif %}>n週間ごと</option>
             </select>
           </td>
           <td>
@@ -139,6 +147,9 @@
           </td>
           <td>
             <input class="edit-input" name="interval_months" type="number" min="1" value="{{ s.interval_months }}" form="sub-{{ s.id }}" />
+          </td>
+          <td>
+            <input class="edit-input" name="interval_weeks" type="number" min="1" value="{{ s.interval_weeks or 1 }}" form="sub-{{ s.id }}" />
           </td>
           <td>
             <select class="edit-input" name="payment_method" form="sub-{{ s.id }}" required>
@@ -165,7 +176,7 @@
 
         {% if not subs %}
         <tr>
-          <td colspan="10" class="empty">サブスクがありません。1件追加してください。</td>
+          <td colspan="11" class="empty">サブスクがありません。1件追加してください。</td>
         </tr>
         {% endif %}
       </tbody>

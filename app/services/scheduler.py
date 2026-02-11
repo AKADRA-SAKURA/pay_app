@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Plan,
+    Subscription,
     CashflowEvent,
     Card,
     CardTransaction,
@@ -79,6 +80,67 @@ def occurs_monthly_interval(start: date, target_month_first: date, interval_mont
     return (target_index - start_index) % interval_months == 0
 
 
+def _iter_weekly_occurrences(start: date, end: date, anchor: date, interval_weeks: int) -> list[date]:
+    if start > end:
+        return []
+
+    step_days = 7 * max(1, int(interval_weeks or 1))
+    diff = (start - anchor).days
+    if diff <= 0:
+        cur = anchor
+    else:
+        k = (diff + step_days - 1) // step_days
+        cur = anchor + timedelta(days=k * step_days)
+
+    out: list[date] = []
+    while cur <= end:
+        out.append(cur)
+        cur += timedelta(days=step_days)
+    return out
+
+
+def _subscription_occurrences_in_range(sub: Subscription, start: date, end: date) -> list[date]:
+    freq = str(getattr(sub, "freq", "monthly") or "monthly")
+    day = int(getattr(sub, "billing_day", 1) or 1)
+    interval_months = max(1, int(getattr(sub, "interval_months", 1) or 1))
+    interval_weeks = max(1, int(getattr(sub, "interval_weeks", 1) or 1))
+    billing_month = int(getattr(sub, "billing_month", 1) or 1)
+    if billing_month < 1 or billing_month > 12:
+        billing_month = 1
+
+    out: list[date] = []
+
+    if freq == "weekly_interval":
+        anchor = resolve_day_in_month(2000, billing_month, day)
+        for d in _iter_weekly_occurrences(start, end, anchor, interval_weeks):
+            adj = apply_business_day_rule(d, cashflow_type="expense")
+            if start <= adj <= end:
+                out.append(adj)
+        return sorted(set(out))
+
+    cur_first = date(start.year, start.month, 1)
+    while cur_first <= end:
+        should = False
+        if freq == "monthly":
+            should = True
+        elif freq == "yearly":
+            should = (cur_first.month == billing_month)
+        elif freq == "monthly_interval":
+            anchor_first = date(2000, billing_month, 1)
+            should = occurs_monthly_interval(anchor_first, cur_first, interval_months)
+
+        if should:
+            d = resolve_day_in_month(cur_first.year, cur_first.month, day)
+            d = apply_business_day_rule(d, cashflow_type="expense")
+            if start <= d <= end:
+                out.append(d)
+
+        ny, nm = _month_add(cur_first.year, cur_first.month, 1)
+        cur_first = date(ny, nm, 1)
+
+    return sorted(set(out))
+
+
 def build_month_events(db: Session, user_id: int, month_first: date) -> list[CashflowEvent]:
     """指定月のイベントを plans から生成して返す（DBにはまだ入れない）"""
     plans = db.query(Plan).filter(Plan.user_id == user_id).all()
@@ -145,6 +207,39 @@ def build_month_events(db: Session, user_id: int, month_first: date) -> list[Cas
     return created
 
 
+def build_month_subscription_events(db: Session, user_id: int, month_first: date) -> list[CashflowEvent]:
+    y, m = month_first.year, month_first.month
+    month_last = date(y, m, calendar.monthrange(y, m)[1])
+    subs = db.query(Subscription).all()
+
+    created: list[CashflowEvent] = []
+    for s in subs:
+        if getattr(s, "payment_method", "bank") != "bank":
+            continue
+        if not getattr(s, "account_id", None):
+            continue
+
+        amount = -abs(int(getattr(s, "amount_yen", 0) or 0))
+        if amount == 0:
+            continue
+
+        for d in _subscription_occurrences_in_range(s, month_first, month_last):
+            created.append(
+                CashflowEvent(
+                    user_id=user_id,
+                    plan_id=None,
+                    account_id=int(s.account_id),
+                    date=d,
+                    amount_yen=amount,
+                    description=f"サブスク: {getattr(s, 'name', '-')}",
+                    source="plan",
+                    status="expected",
+                )
+            )
+
+    return created
+
+
 def rebuild_events(db: Session, user_id: int) -> None:
     """今月＋来月のイベントを作り直す（イベントだけを消して作る）"""
     today = date.today()
@@ -165,6 +260,9 @@ def rebuild_events(db: Session, user_id: int) -> None:
     events += build_month_events(db, user_id, this_first)
     events += build_month_events(db, user_id, next_first)
     events += build_month_events(db, user_id, next2_first)
+    events += build_month_subscription_events(db, user_id, this_first)
+    events += build_month_subscription_events(db, user_id, next_first)
+    events += build_month_subscription_events(db, user_id, next2_first)
 
     # ★ 追記：カード引落（今月・来月・再来月の引落分）
     events += build_card_withdraw_events(db, user_id, this_first.year, this_first.month)
@@ -259,6 +357,19 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
             amount = abs(int(p.amount_yen or 0))
             for _ in _plan_occurs_in_range(p, period_start, period_end):
                 total += amount
+
+        # subscription (payment_method=card) もカード引落に加算
+        subs = (
+            db.query(Subscription)
+            .filter(Subscription.payment_method == "card")
+            .filter(Subscription.card_id == card.id)
+            .all()
+        )
+        for s in subs:
+            amount = abs(int(getattr(s, "amount_yen", 0) or 0))
+            if amount <= 0:
+                continue
+            total += amount * len(_subscription_occurrences_in_range(s, period_start, period_end))
 
         # cardごとのリボ支払い
         revolvings = (
