@@ -7,6 +7,7 @@ class SubscriptionCreate(BaseModel):
     billing_day: int = Field(ge=1, le=31)
     freq: str = Field(default="monthly")
     interval_months: int = Field(default=1, ge=1)
+    interval_weeks: int = Field(default=1, ge=1)
     billing_month: int = Field(default=1, ge=1, le=12)
     payment_method: str = Field(default="bank")
     account_id: int | None = None
@@ -20,6 +21,7 @@ class SubscriptionOut(BaseModel):
     billing_day: int
     freq: str
     interval_months: int
+    interval_weeks: int
     billing_month: int
     payment_method: str
     account_id: int | None = None

@@ -17,6 +17,7 @@ def create_subscription(db: Session, data: SubscriptionCreate) -> Subscription:
         billing_day=data.billing_day,
         freq=data.freq,
         interval_months=data.interval_months,
+        interval_weeks=data.interval_weeks,
         billing_month=data.billing_month,
         payment_method=data.payment_method,
         account_id=data.account_id,

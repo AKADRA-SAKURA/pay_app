@@ -72,6 +72,8 @@ def _ensure_subscription_columns() -> None:
             conn.execute(text("ALTER TABLE subscriptions ADD COLUMN freq VARCHAR(30) NOT NULL DEFAULT 'monthly'"))
         if "interval_months" not in cols:
             conn.execute(text("ALTER TABLE subscriptions ADD COLUMN interval_months INTEGER NOT NULL DEFAULT 1"))
+        if "interval_weeks" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN interval_weeks INTEGER NOT NULL DEFAULT 1"))
         if "billing_month" not in cols:
             conn.execute(text("ALTER TABLE subscriptions ADD COLUMN billing_month INTEGER NOT NULL DEFAULT 1"))
         if "payment_method" not in cols:
@@ -624,6 +626,7 @@ def create_subscription(
     billing_day: int = Form(...),
     freq: str = Form("monthly"),
     interval_months: str | None = Form(None),
+    interval_weeks: str | None = Form(None),
     billing_month: str | None = Form(None),
     payment_method: str = Form("bank"),
     account_id: str | None = Form(None),
@@ -637,16 +640,23 @@ def create_subscription(
             return None
 
     interval_i = _to_int(interval_months) or 1
+    interval_w = _to_int(interval_weeks) or 1
     month_i = _to_int(billing_month) or 1
     account_i = _to_int(account_id)
     card_i = _to_int(card_id)
 
     if freq == "monthly":
         interval_i = 1
+        interval_w = 1
         month_i = 1
     elif freq == "yearly":
         interval_i = 1
+        interval_w = 1
     elif freq == "monthly_interval":
+        interval_w = 1
+        month_i = 1
+    elif freq == "weekly_interval":
+        interval_i = 1
         month_i = 1
 
     if payment_method == "bank":
@@ -660,6 +670,7 @@ def create_subscription(
         billing_day=billing_day,
         freq=freq,
         interval_months=interval_i,
+        interval_weeks=interval_w,
         billing_month=month_i,
         payment_method=payment_method,
         account_id=account_i,
@@ -678,6 +689,7 @@ def update_subscription(
     billing_day: int = Form(...),
     freq: str = Form("monthly"),
     interval_months: str | None = Form(None),
+    interval_weeks: str | None = Form(None),
     billing_month: str | None = Form(None),
     payment_method: str = Form("bank"),
     account_id: str | None = Form(None),
@@ -691,16 +703,23 @@ def update_subscription(
             return None
 
     interval_i = _to_int(interval_months) or 1
+    interval_w = _to_int(interval_weeks) or 1
     month_i = _to_int(billing_month) or 1
     account_i = _to_int(account_id)
     card_i = _to_int(card_id)
 
     if freq == "monthly":
         interval_i = 1
+        interval_w = 1
         month_i = 1
     elif freq == "yearly":
         interval_i = 1
+        interval_w = 1
     elif freq == "monthly_interval":
+        interval_w = 1
+        month_i = 1
+    elif freq == "weekly_interval":
+        interval_i = 1
         month_i = 1
 
     if payment_method == "bank":
@@ -714,6 +733,7 @@ def update_subscription(
         sub.billing_day = int(billing_day)
         sub.freq = freq
         sub.interval_months = int(interval_i)
+        sub.interval_weeks = int(interval_w)
         sub.billing_month = int(month_i)
         sub.payment_method = payment_method
         sub.account_id = int(account_i) if account_i is not None else None

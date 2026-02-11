@@ -14,6 +14,7 @@ class Subscription(Base):
     billing_day: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-31
     freq: Mapped[str] = mapped_column(String(30), nullable=False, default="monthly")
     interval_months: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    interval_weeks: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     billing_month: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     payment_method: Mapped[str] = mapped_column(String(20), nullable=False, default="bank")
     account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
