@@ -32,6 +32,8 @@ class Account(Base):
     # bank / cash / barcode / emoney / nisa
 
     balance_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    effective_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
@@ -100,6 +102,8 @@ class Card(Base):
     payment_day: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-31
 
     payment_account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=False)
+    effective_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     transactions = relationship("CardTransaction", back_populates="card", cascade="all, delete-orphan")
     statements = relationship("CardStatement", back_populates="card", cascade="all, delete-orphan")

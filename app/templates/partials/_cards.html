@@ -24,6 +24,16 @@
         <input name="payment_day" type="number" min="1" max="31" value="10" required />
       </label>
 
+      <label>
+        有効開始日
+        <input name="effective_start_date" type="date" required />
+      </label>
+
+      <label>
+        有効終了日（空欄で無期限）
+        <input name="effective_end_date" type="date" />
+      </label>
+
       <label class="col-span-all">
         引落口座
         <select name="payment_account_id" required>
@@ -61,6 +71,8 @@
           <th>カード名</th>
           <th style="width:120px;">締日</th>
           <th style="width:120px;">支払日</th>
+          <th style="width:150px;">有効開始日</th>
+          <th style="width:170px;">有効終了日</th>
           <th>引落口座</th>
         </tr>
       </thead>
@@ -88,6 +100,12 @@
             <input class="edit-input" name="payment_day" type="number" min="1" max="31" value="{{ c.payment_day }}" form="card-{{ c.id }}" required />
           </td>
           <td>
+            <input class="edit-input" name="effective_start_date" type="date" value="{{ c.effective_start_date.isoformat() if c.effective_start_date else '' }}" form="card-{{ c.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="effective_end_date" type="date" value="{{ c.effective_end_date.isoformat() if c.effective_end_date else '' }}" form="card-{{ c.id }}" />
+          </td>
+          <td>
             <select class="edit-input" name="payment_account_id" form="card-{{ c.id }}" required>
               {% for a in accounts %}
                 <option value="{{ a.id }}" {% if a.id == c.payment_account_id %}selected{% endif %}>{{ a.name }} (ID:{{ a.id }})</option>
@@ -98,13 +116,13 @@
         {% endfor %}
 
         {% if not cards %}
-        <tr><td colspan="6" class="empty">カードがありません。</td></tr>
+        <tr><td colspan="8" class="empty">カードがありません。</td></tr>
         {% endif %}
       </tbody>
     </table>
   </div>
 
   <div class="hint mt-10">
-    ※ 締日〜支払日の期間で明細を集計します。休日は営業日調整します。
+    ※ 締日・支払日は月末補正で計算されます。
   </div>
 </div>
