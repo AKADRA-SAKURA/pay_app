@@ -8,7 +8,9 @@ from datetime import date, datetime
 
 DATE_YMD_RE = re.compile(r"(?P<y>\d{4})[/-](?P<m>\d{1,2})[/-](?P<d>\d{1,2})")
 DATE_MD_RE = re.compile(r"(?P<m>\d{1,2})[/-](?P<d>\d{1,2})")
-MONEY_RE = re.compile(r"[+\-]?\s*[¥￥]?\s*\(?\d[\d,]*\)?\s*円?")
+DATE_JP_YMD_RE = re.compile(r"(?P<y>\d{4})\s*年\s*(?P<m>\d{1,2})\s*月\s*(?P<d>\d{1,2})\s*日")
+DATE_JP_MD_RE = re.compile(r"(?P<m>\d{1,2})\s*月\s*(?P<d>\d{1,2})\s*日")
+MONEY_RE = re.compile(r"(?:[+\-](?:[¥￥]\s*)?\(?\d[\d,]*\)?|[¥￥]?\s*\(?\d[\d,]*\)?)\s*円?")
 
 HEADER_FOOTER_RE = re.compile(
     r"^(利用日|請求日|ご利用明細|ご利用金額|合計|小計|ページ|page|お問い合わせ|カード番号)",
@@ -37,10 +39,19 @@ def parse_flexible_date(value: str, *, default_year: int | None = None) -> date:
         except ValueError:
             pass
 
+    m_jp = DATE_JP_YMD_RE.fullmatch(s)
+    if m_jp:
+        return date(int(m_jp.group("y")), int(m_jp.group("m")), int(m_jp.group("d")))
+
     m = DATE_MD_RE.fullmatch(s)
     if m and default_year is not None:
         year = default_year
         return date(year, int(m.group("m")), int(m.group("d")))
+
+    m_jp_md = DATE_JP_MD_RE.fullmatch(s)
+    if m_jp_md and default_year is not None:
+        year = default_year
+        return date(year, int(m_jp_md.group("m")), int(m_jp_md.group("d")))
 
     raise ValueError(f"invalid date: {value}")
 
@@ -102,9 +113,9 @@ def _resolve_csv_headers(fieldnames: list[str]) -> dict[str, str]:
                 return m[c]
         return None
 
-    date_key = pick("yyyy/mm/dd", "date", "日付", "利用日")
-    title_key = pick("title", "merchant", "加盟店", "摘要", "店名")
-    price_key = pick("price", "amount", "金額", "利用金額")
+    date_key = pick("yyyy/mm/dd", "date", "日付", "利用日", "ご利用年月日", "ご利用日")
+    title_key = pick("title", "merchant", "加盟店", "摘要", "店名", "ご利用場所", "利用場所")
+    price_key = pick("price", "amount", "金額", "利用金額", "ご利用金額")
 
     if not (date_key and title_key and price_key):
         raise ValueError("CSV headers must include date/title/price")
@@ -166,6 +177,11 @@ def _extract_date_from_line(
         d = date(int(m.group("y")), int(m.group("m")), int(m.group("d")))
         return d.strftime("%Y/%m/%d"), m.span(), None
 
+    m_jp = DATE_JP_YMD_RE.search(line)
+    if m_jp:
+        d = date(int(m_jp.group("y")), int(m_jp.group("m")), int(m_jp.group("d")))
+        return d.strftime("%Y/%m/%d"), m_jp.span(), None
+
     m2 = DATE_MD_RE.search(line)
     if m2:
         if default_year is None:
@@ -174,6 +190,15 @@ def _extract_date_from_line(
             return today_str, m2.span(), hint
         d = date(default_year, int(m2.group("m")), int(m2.group("d")))
         return d.strftime("%Y/%m/%d"), m2.span(), None
+
+    m2_jp = DATE_JP_MD_RE.search(line)
+    if m2_jp:
+        if default_year is None:
+            hint = f"{int(m2_jp.group('m')):02d}/{int(m2_jp.group('d')):02d}"
+            today_str = date.today().strftime("%Y/%m/%d")
+            return today_str, m2_jp.span(), hint
+        d = date(default_year, int(m2_jp.group("m")), int(m2_jp.group("d")))
+        return d.strftime("%Y/%m/%d"), m2_jp.span(), None
 
     return None, None, None
 
@@ -203,9 +228,88 @@ def _extract_amount_from_line(line: str, *, skip_span: tuple[int, int] | None = 
     return candidates[-1]
 
 
+def _is_placeholder_cell(value: str) -> bool:
+    s = normalize_text_line(value)
+    return s in ("", "-", "－", "ー", "―", "ｰ", "—", "−")
+
+
+def _clean_title_candidate(value: str) -> str:
+    parts = [p for p in normalize_text_line(value).split(" ") if not _is_placeholder_cell(p)]
+    return normalize_title(" ".join(parts))
+
+
+def _remove_spans(line: str, spans: list[tuple[int, int] | None]) -> str:
+    text = line
+    valid_spans = [s for s in spans if s is not None]
+    for start, end in sorted(valid_spans, key=lambda x: x[0], reverse=True):
+        text = text[:start] + " " + text[end:]
+    return text
+
+
+def _parse_tabular_statement_line(
+    raw_line: str,
+    *,
+    default_year: int | None = None,
+) -> tuple[dict | None, str | None]:
+    if "\t" not in raw_line:
+        return None, None
+
+    cells = [normalize_text_line(c) for c in raw_line.split("\t")]
+    if not cells:
+        return None, None
+
+    date_cell = cells[0] if len(cells) >= 1 else ""
+    place_cell = cells[1] if len(cells) >= 2 else ""
+    usage_cell = cells[2] if len(cells) >= 3 else ""
+    amount_cell = cells[3] if len(cells) >= 4 else (cells[-1] if cells else "")
+
+    # header line
+    if (
+        "ご利用年月日" in date_cell
+        or "ご利用場所" in place_cell
+        or "ご利用金額" in amount_cell
+        or HEADER_FOOTER_RE.search(date_cell)
+    ):
+        return {}, None
+
+    if not date_cell:
+        return None, None
+
+    d_hint: str | None = None
+    try:
+        d = parse_flexible_date(date_cell)
+        date_str = d.strftime("%Y/%m/%d")
+    except Exception:
+        date_str, _, d_hint = _extract_date_from_line(date_cell, default_year=default_year)
+        if date_str is None:
+            return None, None
+
+    amount, _ = _extract_amount_from_line(amount_cell)
+    if amount is None:
+        try:
+            amount = parse_money(amount_cell)
+        except Exception:
+            return None, None
+
+    kind = detect_payment_kind(f"{place_cell} {usage_cell}")
+    if kind == "リボ":
+        return {
+            "skip": True,
+            "warning": "リボ明細をスキップしました",
+        }, None
+
+    title_src = place_cell if not _is_placeholder_cell(place_cell) else usage_cell
+    title = _append_kind(_clean_title_candidate(title_src), kind)
+
+    item: dict = {"date": date_str, "title": title, "price": amount}
+    if d_hint:
+        item["date_hint"] = d_hint
+    return item, d_hint
+
+
 def parse_card_text_preview(text: str, *, default_year: int | None = None) -> tuple[list[dict], list[str], list[str]]:
-    lines = [normalize_text_line(x) for x in (text or "").replace("\r\n", "\n").split("\n")]
-    lines = [x for x in lines if x]
+    raw_lines = [(x or "").strip() for x in (text or "").replace("\r\n", "\n").split("\n")]
+    raw_lines = [x for x in raw_lines if x]
 
     rows: list[dict] = []
     errors: list[str] = []
@@ -216,7 +320,21 @@ def parse_card_text_preview(text: str, *, default_year: int | None = None) -> tu
     pending_kind: str | None = None
     pending_title_parts: list[str] = []
 
-    for idx, line in enumerate(lines, start=1):
+    for idx, raw_line in enumerate(raw_lines, start=1):
+        tab_row, tab_hint = _parse_tabular_statement_line(raw_line, default_year=default_year)
+        if tab_row is not None:
+            if tab_row.get("skip"):
+                warnings.append(f"line {idx}: {tab_row.get('warning')}")
+                continue
+            if tab_row:
+                if tab_hint:
+                    warnings.append(
+                        f"line {idx}: 年がない日付 {tab_hint} のため、今日 {tab_row.get('date')} を仮入力しました。プレビューで編集してください"
+                    )
+                rows.append(tab_row)
+                continue
+
+        line = normalize_text_line(raw_line)
         if HEADER_FOOTER_RE.search(line):
             continue
 
@@ -288,10 +406,7 @@ def parse_card_text_preview(text: str, *, default_year: int | None = None) -> tu
             warnings.append(f"line {idx}: リボ明細をスキップしました")
             continue
 
-        title = line
-        if d_span:
-            title = title[: d_span[0]] + " " + title[d_span[1] :]
-        title = title[: a_span[0]] + " " + title[a_span[1] :]
+        title = _clean_title_candidate(_remove_spans(line, [d_span, a_span]))
         title = _append_kind(title, kind)
 
         item = {"date": d, "title": title, "price": amount}
