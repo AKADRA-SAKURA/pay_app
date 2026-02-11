@@ -72,16 +72,23 @@
   <div class="card-head">
     <h2>単発支払い一覧 <span class="pill">最新30件</span></h2>
     <div class="card-head-actions">
+      <form id="oneoff-bulk-delete-form" method="post" action="/oneoff/bulk-delete" style="margin:0; display:inline;">
+        <input id="oneoff-bulk-delete-ids" type="hidden" name="ids" value="" />
+        <button id="oneoff-bulk-delete-btn" class="btn btn-danger" type="button" disabled>選択削除</button>
+      </form>
       <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="oneoff-csv-form-template">⇪ CSV</button>
       <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="oneoff-form-template">＋ 追加</button>
     </div>
   </div>
 
   <div class="table-wrap">
-    <table>
+    <table id="oneoff-table">
       <thead>
         <tr>
           <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:70px;">
+            <input id="oneoff-select-all" type="checkbox" aria-label="全選択" />
+          </th>
           <th style="width:80px;">ID</th>
           <th style="width:140px;">日付</th>
           <th>メモ</th>
@@ -101,6 +108,9 @@
             <form method="post" action="/oneoff/{{ e.id }}/delete" style="margin:0; display:inline;">
               <button class="btn btn-danger" type="submit">削除</button>
             </form>
+          </td>
+          <td>
+            <input class="oneoff-select" type="checkbox" data-oneoff-id="{{ e.id }}" aria-label="ID{{ e.id }}を選択" />
           </td>
           <td>{{ e.id }}</td>
           <td>
@@ -126,7 +136,7 @@
         </tr>
         {% endfor %}
         {% if not oneoffs %}
-        <tr><td colspan="6" class="empty">履歴がありません。</td></tr>
+        <tr><td colspan="7" class="empty">履歴がありません。</td></tr>
         {% endif %}
       </tbody>
     </table>

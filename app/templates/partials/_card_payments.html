@@ -99,14 +99,23 @@
 <div class="card">
   <div class="card-head">
     <h2>リボ一覧</h2>
-    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-revolving-form-template">＋ 追加</button>
+    <div class="card-head-actions">
+      <form id="card-revolving-bulk-delete-form" method="post" action="/card-revolvings/bulk-delete" style="margin:0; display:inline;">
+        <input id="card-revolving-bulk-delete-ids" type="hidden" name="ids" value="" />
+        <button id="card-revolving-bulk-delete-btn" class="btn btn-danger" type="button" disabled>選択削除</button>
+      </form>
+      <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-revolving-form-template">＋ 追加</button>
+    </div>
   </div>
 
   <div class="table-wrap">
-    <table>
+    <table id="card-revolving-table">
       <thead>
         <tr>
           <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:70px;">
+            <input id="card-revolving-select-all" type="checkbox" aria-label="全選択" />
+          </th>
           <th style="width:90px;">ID</th>
           <th style="width:160px;">カード</th>
           <th style="width:130px;">開始月</th>
@@ -127,6 +136,9 @@
             <form method="post" action="/card-revolvings/{{ r.id }}/delete" style="margin:0; display:inline;">
               <button class="btn btn-danger" type="submit">削除</button>
             </form>
+          </td>
+          <td>
+            <input class="card-revolving-select" type="checkbox" data-card-revolving-id="{{ r.id }}" aria-label="ID{{ r.id }}を選択" />
           </td>
           <td>{{ r.id }}</td>
           <td>
@@ -152,7 +164,7 @@
         {% endfor %}
 
         {% if not card_revolvings %}
-        <tr><td colspan="7" class="empty">リボ登録はまだありません。</td></tr>
+        <tr><td colspan="8" class="empty">リボ登録はまだありません。</td></tr>
         {% endif %}
       </tbody>
     </table>
@@ -166,14 +178,23 @@
 <div class="card">
   <div class="card-head">
     <h2>分割一覧</h2>
-    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-installment-form-template">＋ 追加</button>
+    <div class="card-head-actions">
+      <form id="card-installment-bulk-delete-form" method="post" action="/card-installments/bulk-delete" style="margin:0; display:inline;">
+        <input id="card-installment-bulk-delete-ids" type="hidden" name="ids" value="" />
+        <button id="card-installment-bulk-delete-btn" class="btn btn-danger" type="button" disabled>選択削除</button>
+      </form>
+      <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="card-installment-form-template">＋ 追加</button>
+    </div>
   </div>
 
   <div class="table-wrap">
-    <table>
+    <table id="card-installment-table">
       <thead>
         <tr>
           <th class="sticky-col" style="width:140px;">操作</th>
+          <th style="width:70px;">
+            <input id="card-installment-select-all" type="checkbox" aria-label="全選択" />
+          </th>
           <th style="width:90px;">ID</th>
           <th style="width:160px;">カード</th>
           <th style="width:130px;">開始月</th>
@@ -194,6 +215,9 @@
             <form method="post" action="/card-installments/{{ s.id }}/delete" style="margin:0; display:inline;">
               <button class="btn btn-danger" type="submit">削除</button>
             </form>
+          </td>
+          <td>
+            <input class="card-installment-select" type="checkbox" data-card-installment-id="{{ s.id }}" aria-label="ID{{ s.id }}を選択" />
           </td>
           <td>{{ s.id }}</td>
           <td>
@@ -219,7 +243,7 @@
         {% endfor %}
 
         {% if not card_installments %}
-        <tr><td colspan="7" class="empty">分割登録はまだありません。</td></tr>
+        <tr><td colspan="8" class="empty">分割登録はまだありません。</td></tr>
         {% endif %}
       </tbody>
     </table>
