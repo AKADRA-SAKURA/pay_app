@@ -18,6 +18,8 @@ import io
 from app.services.scheduler import (
     rebuild_events as rebuild_events_scheduler,
     card_period_for_withdraw_month,
+    _revolving_due_for_month,
+    _installment_due_for_month,
 )
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
@@ -1077,27 +1079,61 @@ def api_card_merchant_pie(
         rows = []
     else:
         rows = (
-            db.query(CardTransaction.merchant, CardTransaction.amount_yen)
+            db.query(CardTransaction.merchant, CardTransaction.amount_yen, CardTransaction.note)
             .filter(CardTransaction.card_id == int(card_id))
             .filter(CardTransaction.date >= analyzed_start, CardTransaction.date <= analyzed_end)
             .all()
         )
 
+    account_names = {int(a.id): a.name for a in db.query(Account).all()}
+
+    def _charge_label_from_note(note: str | None) -> str | None:
+        s = (note or "").strip()
+        m = re.search(r"charge to account_id=(\d+)", s)
+        if not m:
+            return None
+        aid = int(m.group(1))
+        return f"\u30c1\u30e3\u30fc\u30b8: {account_names.get(aid, f'ID:{aid}')}"
+
     totals: dict[str, int] = {}
     total_yen = 0
-    for merchant, amount in rows:
+    for merchant, amount, note in rows:
         amount_i = abs(int(amount or 0))
         if amount_i <= 0:
             continue
-        name = (merchant or "").strip() or "(unset)"
+        charge_label = _charge_label_from_note(note)
+        if charge_label:
+            name = charge_label
+        else:
+            name = (merchant or "").strip() or "(\u672a\u8a2d\u5b9a)"
         totals[name] = totals.get(name, 0) + amount_i
         total_yen += amount_i
+
+    # Add revolving dues for selected withdraw month.
+    revolvings = db.query(CardRevolving).filter(CardRevolving.card_id == int(card_id)).all()
+    for rv in revolvings:
+        due = int(_revolving_due_for_month(rv, month_first) or 0)
+        if due <= 0:
+            continue
+        label = (getattr(rv, "note", None) or "").strip() or "\u30ea\u30dc"
+        totals[label] = totals.get(label, 0) + due
+        total_yen += due
+
+    # Add installment dues for selected withdraw month.
+    installments = db.query(CardInstallment).filter(CardInstallment.card_id == int(card_id)).all()
+    for inst in installments:
+        due = int(_installment_due_for_month(inst, month_first) or 0)
+        if due <= 0:
+            continue
+        label = (getattr(inst, "note", None) or "").strip() or "\u5206\u5272"
+        totals[label] = totals.get(label, 0) + due
+        total_yen += due
 
     pairs = sorted(totals.items(), key=lambda x: x[1], reverse=True)
     if len(pairs) > top_n:
         head = pairs[: top_n - 1]
         tail_total = sum(v for _, v in pairs[top_n - 1 :])
-        pairs = head + [("Other", tail_total)]
+        pairs = head + [("\u305d\u306e\u4ed6", tail_total)]
 
     items = []
     for label, value in pairs:
