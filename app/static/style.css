@@ -769,6 +769,31 @@ tbody tr:last-child td {
   height: 220px;
 }
 
+.merchant-pie-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+.merchant-pie-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.merchant-pie-controls select,
+.merchant-pie-controls input {
+  min-width: 180px;
+}
+
+.merchant-pie-wrap {
+  height: 260px;
+}
+
 
 
 .table-toggle {
@@ -901,6 +926,15 @@ tbody tr:last-child td {
 @media (max-width: 640px) {
   .pie-grid {
     grid-template-columns: 1fr;
+  }
+  .merchant-pie-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .merchant-pie-controls select,
+  .merchant-pie-controls input {
+    min-width: 0;
+    width: 100%;
   }
   .section-title {
     font-size: 22px;

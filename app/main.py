@@ -15,7 +15,10 @@ import re
 import csv
 import io
 
-from app.services.scheduler import rebuild_events as rebuild_events_scheduler
+from app.services.scheduler import (
+    rebuild_events as rebuild_events_scheduler,
+    card_period_for_withdraw_month,
+)
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
 from . import crud
@@ -657,6 +660,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "oneoffs": oneoffs,
             "transfers": transfers,
             "card_charges": card_charges,
+            "card_merchant_default_month": today.strftime("%Y-%m"),
             "pay_pie_this": pay_pie_this,
             "pay_pie_next": pay_pie_next,
             "advice": get_today_advice(db, user_id=1),
@@ -1037,6 +1041,83 @@ def api_forecast_accounts(
     return forecast_by_account_events(
         db, user_id=1, start=this_first, end=next_last, danger_threshold_yen=danger_threshold_yen
     )
+
+
+@app.get("/api/cards/merchant-pie")
+def api_card_merchant_pie(
+    card_id: int = Query(..., ge=1),
+    withdraw_month: str = Query(...),
+    top_n: int = Query(8, ge=3, le=20),
+    db: Session = Depends(get_db),
+):
+    card = db.query(Card).filter(Card.id == int(card_id)).one_or_none()
+    if card is None:
+        raise HTTPException(status_code=404, detail="card not found")
+
+    try:
+        month_first = _parse_month_start(withdraw_month)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    period_start, period_end, withdraw_date = card_period_for_withdraw_month(
+        card, month_first.year, month_first.month
+    )
+
+    effective_start = getattr(card, "effective_start_date", None)
+    effective_end = getattr(card, "effective_end_date", None)
+
+    analyzed_start = period_start
+    analyzed_end = period_end
+    if effective_start and effective_start > analyzed_start:
+        analyzed_start = effective_start
+    if effective_end and effective_end < analyzed_end:
+        analyzed_end = effective_end
+
+    if analyzed_start > analyzed_end:
+        rows = []
+    else:
+        rows = (
+            db.query(CardTransaction.merchant, CardTransaction.amount_yen)
+            .filter(CardTransaction.card_id == int(card_id))
+            .filter(CardTransaction.date >= analyzed_start, CardTransaction.date <= analyzed_end)
+            .all()
+        )
+
+    totals: dict[str, int] = {}
+    total_yen = 0
+    for merchant, amount in rows:
+        amount_i = abs(int(amount or 0))
+        if amount_i <= 0:
+            continue
+        name = (merchant or "").strip() or "(unset)"
+        totals[name] = totals.get(name, 0) + amount_i
+        total_yen += amount_i
+
+    pairs = sorted(totals.items(), key=lambda x: x[1], reverse=True)
+    if len(pairs) > top_n:
+        head = pairs[: top_n - 1]
+        tail_total = sum(v for _, v in pairs[top_n - 1 :])
+        pairs = head + [("Other", tail_total)]
+
+    items = []
+    for label, value in pairs:
+        ratio = (value / total_yen * 100.0) if total_yen > 0 else 0.0
+        items.append({"label": label, "value": int(value), "ratio": round(ratio, 2)})
+
+    return {
+        "card_id": int(card.id),
+        "card_name": card.name,
+        "withdraw_month": month_first.strftime("%Y-%m"),
+        "withdraw_date": withdraw_date.isoformat(),
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "analyzed_start": analyzed_start.isoformat(),
+        "analyzed_end": analyzed_end.isoformat(),
+        "effective_start_date": effective_start.isoformat() if effective_start else None,
+        "effective_end_date": effective_end.isoformat() if effective_end else None,
+        "total_yen": int(total_yen),
+        "items": items,
+    }
 
 
 @app.post("/cards")
