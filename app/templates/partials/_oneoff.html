@@ -1,4 +1,4 @@
-<!-- 単発支払い登録（オーバーレイ） -->
+﻿<!-- 単発支払い登録（オーバーレイ） -->
 
 <div id="oneoff-form-template" class="overlay-form-template">
   <div class="card">
@@ -34,7 +34,7 @@
 
       <label class="col-span-all">
         メモ
-        <input name="description" placeholder="スーパー / 昼食 / 交通費" required />
+        <input name="description" placeholder="スーパー / 食費 / 交通費" required />
       </label>
 
       <div class="actions col-span-all">
@@ -42,7 +42,46 @@
       </div>
 
       <div class="hint col-span-all">
-        ※ 振替は「口座間の移動」を使うと相殺され、残高予測が整合します。
+        ※ 振替は「チャージ / 残高移動登録」を使うと、口座間の移動を分離して管理できます。
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="oneoff-text-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>単発支払いテキスト取込 <span class="pill">text import</span></h2>
+
+    <form method="post" action="/oneoff/import-text" class="form">
+      <label class="col-span-all">
+        取込先口座
+        <select name="account_id" required>
+          {% for a in accounts %}
+            <option value="{{ a.id }}">{{ a.name }} ({{ a.kind }}) / ID:{{ a.id }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        金額符号の扱い
+        <select name="default_direction" required>
+          <option value="auto">自動（正数=支出, 負数=収入）</option>
+          <option value="expense">すべて支出として取込</option>
+          <option value="income">すべて収入として取込</option>
+        </select>
+      </label>
+
+      <label class="col-span-all">
+        明細テキスト
+        <textarea name="text" class="import-textarea" rows="8" placeholder="例:&#10;2026/02/04 スーパー 1,200円&#10;2026年2月5日 コンビニ 560円" required></textarea>
+      </label>
+
+      <div class="actions col-span-all">
+        <button class="btn" type="submit">取込</button>
+      </div>
+
+      <div class="hint col-span-all">
+        ※ 日付・店名・金額を抽出して単発支払いとして一括登録します。
       </div>
     </form>
   </div>
@@ -53,14 +92,14 @@
     <h2>単発支払いCSV取込 <span class="pill">csv import</span></h2>
     <form method="post" action="/oneoff/import-csv" enctype="multipart/form-data" class="form">
       <label class="col-span-all">
-        CSV取込（yyyy/mm/dd,type,price,account,memo）
+        CSV取込（`yyyy/mm/dd,type,price,account,memo`）
         <input name="file" type="file" accept=".csv,text/csv" required />
       </label>
       <div class="actions col-span-all">
         <button class="btn" type="submit">取込実行</button>
       </div>
       <div class="hint col-span-all">
-        ※ account は口座名またはIDを指定できます。
+        ※ `account` は口座名またはIDで指定できます。
       </div>
     </form>
   </div>
@@ -76,7 +115,8 @@
         <input id="oneoff-bulk-delete-ids" type="hidden" name="ids" value="" />
         <button id="oneoff-bulk-delete-btn" class="btn btn-danger" type="button" disabled>選択削除</button>
       </form>
-      <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="oneoff-csv-form-template">⇪ CSV</button>
+      <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="oneoff-text-form-template">テキスト取込</button>
+      <button class="btn btn-ghost btn-upload" type="button" data-overlay-open="oneoff-csv-form-template">CSV取込</button>
       <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="oneoff-form-template">＋ 追加</button>
     </div>
   </div>
@@ -136,7 +176,7 @@
         </tr>
         {% endfor %}
         {% if not oneoffs %}
-        <tr><td colspan="7" class="empty">履歴がありません。</td></tr>
+        <tr><td colspan="7" class="empty">まだデータがありません。</td></tr>
         {% endif %}
       </tbody>
     </table>

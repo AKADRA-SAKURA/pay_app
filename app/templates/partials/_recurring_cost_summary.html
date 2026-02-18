@@ -1,0 +1,83 @@
+<div class="card col-span-all">
+  <h2>予定/サブスク 年間コストサマリー <span class="pill">12か月見込み</span></h2>
+  <div class="hint" style="margin-bottom:8px;">※ 予定一覧は「定期支払」のみ集計（給料などの収入は除外）</div>
+
+  <div class="recurring-cost-grid">
+    <div class="recurring-cost-item">
+      <h3>予定一覧（定期支払）</h3>
+      <div class="recurring-kpi-row">
+        <div class="recurring-kpi">月平均: <strong>{{ "{:,}".format(recurring_cost_summary["plans"]["monthly_avg_yen"]) }} 円</strong></div>
+        <div class="recurring-kpi">年間合計: <strong>{{ "{:,}".format(recurring_cost_summary["plans"]["annual_total_yen"]) }} 円</strong></div>
+      </div>
+
+      {% if recurring_cost_summary["plans"]["pie"] %}
+      <div class="chart-wrap pie-wrap recurring-pie-wrap">
+        <canvas id="planAnnualCostPie"></canvas>
+      </div>
+      {% else %}
+      <div class="empty">予定一覧の定期支払データがありません。</div>
+      {% endif %}
+
+      <div class="table-wrap mt-10">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 140px;">月</th>
+              <th style="width: 180px;">合計（円）</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in recurring_cost_summary["plans"]["monthly_totals"] %}
+            <tr>
+              <td>{{ m["month"] }}</td>
+              <td class="money">{{ "{:,}".format(m["value"]) }} 円</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="recurring-cost-item">
+      <h3>サブスク</h3>
+      <div class="recurring-kpi-row">
+        <div class="recurring-kpi">月平均: <strong>{{ "{:,}".format(recurring_cost_summary["subs"]["monthly_avg_yen"]) }} 円</strong></div>
+        <div class="recurring-kpi">年間合計: <strong>{{ "{:,}".format(recurring_cost_summary["subs"]["annual_total_yen"]) }} 円</strong></div>
+      </div>
+
+      {% if recurring_cost_summary["subs"]["pie"] %}
+      <div class="chart-wrap pie-wrap recurring-pie-wrap">
+        <canvas id="subAnnualCostPie"></canvas>
+      </div>
+      {% else %}
+      <div class="empty">サブスクデータがありません。</div>
+      {% endif %}
+
+      <div class="table-wrap mt-10">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 140px;">月</th>
+              <th style="width: 180px;">合計（円）</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in recurring_cost_summary["subs"]["monthly_totals"] %}
+            <tr>
+              <td>{{ m["month"] }}</td>
+              <td class="money">{{ "{:,}".format(m["value"]) }} 円</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script id="planAnnualCostPieData" type="application/json">
+    {{ recurring_cost_summary["plans"]["pie"] | default([]) | tojson }}
+  </script>
+  <script id="subAnnualCostPieData" type="application/json">
+    {{ recurring_cost_summary["subs"]["pie"] | default([]) | tojson }}
+  </script>
+</div>

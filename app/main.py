@@ -1,4 +1,4 @@
-from dotenv import load_dotenv
+﻿from dotenv import load_dotenv
 load_dotenv()
 
 from uuid import uuid4
@@ -20,6 +20,8 @@ from app.services.scheduler import (
     card_period_for_withdraw_month,
     _revolving_due_for_month,
     _installment_due_for_month,
+    occurs_monthly_interval,
+    _subscription_occurrences_in_range,
 )
 from .db import Base, engine, get_db, SessionLocal
 from .schemas import SubscriptionCreate, SubscriptionOut
@@ -38,7 +40,7 @@ from .crud import list_accounts, create_account
 from app.services.forecast import forecast_by_account_events, forecast_by_account_daily
 from .services.forecast import forecast_free_daily
 from app.advice.service import get_today_advice
-from app.utils.dates import month_range
+from app.utils.dates import month_range, resolve_day_in_month, apply_business_day_rule
 from app.services.statement_import import (
     parse_card_text_preview,
     parse_card_csv_preview,
@@ -110,7 +112,7 @@ def _ensure_account_card_columns() -> None:
 
 _ensure_account_card_columns()
 
-app = FastAPI(title="家計簿・口座管理マネージャー（ローカル）")
+app = FastAPI(title="pay_app")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
@@ -234,9 +236,9 @@ def _resolve_card_id(db: Session, key: str) -> int:
 def _parse_direction(v: str) -> str:
     s = (v or "").strip().lower()
     # Accept CSV direction tokens in EN/JA.
-    if s in ("expense", "exp", "-") or "支出" in s:
+    if s in ("expense", "exp", "-") or "隰ｾ・ｯ陷・ｽｺ" in s:
         return "expense"
-    if s in ("income", "inc", "+") or "収入" in s:
+    if s in ("income", "inc", "+") or "陷ｿ荳ｻ繝ｻ" in s:
         return "income"
     raise ValueError(f"invalid type: {v}")
 
@@ -293,7 +295,7 @@ def import_preview_text(payload: ImportPreviewTextIn, db: Session = Depends(get_
         warnings = list(warnings) + [f"重複候補: {len(duplicate_candidates)}件"]
     missing_date = sum(1 for r in rows if not str(r.get("date", "")).strip())
     if missing_date:
-        warnings = list(warnings) + [f"年未設定の日付が {missing_date}件あります。プレビューで補完してください"]
+        warnings = list(warnings) + [f"日付未抽出の行があります: {missing_date}件（プレビューで編集してください）"]
 
     return {
         "rows": rows,
@@ -322,7 +324,7 @@ async def import_preview_csv(
         warnings = list(warnings) + [f"重複候補: {len(duplicate_candidates)}件"]
     missing_date = sum(1 for r in rows if not str(r.get("date", "")).strip())
     if missing_date:
-        warnings = list(warnings) + [f"年未設定の日付が {missing_date}件あります。プレビューで補完してください"]
+        warnings = list(warnings) + [f"日付未抽出の行があります: {missing_date}件（プレビューで編集してください）"]
 
     return {
         "rows": rows,
@@ -405,14 +407,14 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     today = date.today()
     this_first, this_last = month_range(today)
 
-    # 来月
+    # 隴夲ｽ･隴帙・
     if this_first.month == 12:
         next_first = date(this_first.year + 1, 1, 1)
     else:
         next_first = date(this_first.year, this_first.month + 1, 1)
     next_first, next_last = month_range(next_first)
 
-    # 再来月
+    # 陷閧ｴ謫りｭ帙・
     if next_first.month == 12:
         next2_first = date(next_first.year + 1, 1, 1)
     else:
@@ -449,6 +451,117 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     pay_pie_this = _build_payment_pie(events_this)
     pay_pie_next = _build_payment_pie(events_next)
     from collections import defaultdict
+
+    def _month_shift(d: date, add: int) -> date:
+        total = (d.year * 12 + (d.month - 1)) + add
+        y = total // 12
+        m = (total % 12) + 1
+        return date(y, m, 1)
+
+    def _month_list(start_first: date, months: int) -> list[date]:
+        return [_month_shift(start_first, i) for i in range(months)]
+
+    def _to_pie_items(totals: dict[str, int], max_items: int = 8) -> list[dict]:
+        pairs = sorted(((k, int(v)) for k, v in totals.items() if int(v) > 0), key=lambda x: x[1], reverse=True)
+        if len(pairs) > max_items:
+            head = pairs[: max_items - 1]
+            rest = sum(v for _, v in pairs[max_items - 1 :])
+            pairs = head + [("その他", rest)]
+        return [{"label": k, "value": v} for k, v in pairs]
+
+    def _plan_occurs_in_month(plan: Plan, month_first: date) -> int:
+        y, m = month_first.year, month_first.month
+        month_last = date(y, m, calendar.monthrange(y, m)[1])
+        start_d = plan.start_date or today
+        if start_d > month_last:
+            return 0
+        if plan.end_date and plan.end_date < month_first:
+            return 0
+
+        should = False
+        freq = str(plan.freq or "monthly")
+        if freq == "monthly":
+            should = True
+        elif freq == "yearly":
+            should = int(plan.month or 1) == m
+        elif freq == "monthly_interval":
+            should = occurs_monthly_interval(start_d, month_first, int(plan.interval_months or 1))
+        if not should:
+            return 0
+
+        desired_day = max(1, int(plan.day or 1))
+        ev_date = resolve_day_in_month(y, m, desired_day)
+        ev_date = apply_business_day_rule(
+            ev_date,
+            cashflow_type="income" if str(plan.type or "") == "income" else "expense",
+        )
+        if ev_date < start_d:
+            return 0
+        if plan.end_date and ev_date > plan.end_date:
+            return 0
+        if not (month_first <= ev_date <= month_last):
+            return 0
+        return 1
+
+    def _build_recurring_cost_summary() -> dict:
+        months = _month_list(this_first, 12)
+
+        plan_monthly_totals: list[dict] = []
+        plan_pie_totals: dict[str, int] = {}
+        for month_first in months:
+            month_total = 0
+            for p in plans:
+                if str(getattr(p, "type", "")) == "income":
+                    continue
+                count = _plan_occurs_in_month(p, month_first)
+                if count <= 0:
+                    continue
+                amount = abs(int(getattr(p, "amount_yen", 0) or 0))
+                if amount <= 0:
+                    continue
+                val = amount * count
+                month_total += val
+                key = str(getattr(p, "title", "") or "-")
+                plan_pie_totals[key] = plan_pie_totals.get(key, 0) + val
+            plan_monthly_totals.append({"month": month_first.strftime("%Y-%m"), "value": int(month_total)})
+
+        sub_monthly_totals: list[dict] = []
+        sub_pie_totals: dict[str, int] = {}
+        for month_first in months:
+            month_last = date(month_first.year, month_first.month, calendar.monthrange(month_first.year, month_first.month)[1])
+            month_total = 0
+            for s in subs:
+                amount = abs(int(getattr(s, "amount_yen", 0) or 0))
+                if amount <= 0:
+                    continue
+                occ_count = len(_subscription_occurrences_in_range(s, month_first, month_last))
+                if occ_count <= 0:
+                    continue
+                val = amount * occ_count
+                month_total += val
+                key = str(getattr(s, "name", "") or "-")
+                sub_pie_totals[key] = sub_pie_totals.get(key, 0) + val
+            sub_monthly_totals.append({"month": month_first.strftime("%Y-%m"), "value": int(month_total)})
+
+        plan_annual_total = sum(int(x["value"]) for x in plan_monthly_totals)
+        sub_annual_total = sum(int(x["value"]) for x in sub_monthly_totals)
+
+        return {
+            "plans": {
+                "monthly_avg_yen": int(round(plan_annual_total / 12)) if plan_annual_total else 0,
+                "annual_total_yen": int(plan_annual_total),
+                "monthly_totals": plan_monthly_totals,
+                "pie": _to_pie_items(plan_pie_totals),
+            },
+            "subs": {
+                "monthly_avg_yen": int(round(sub_annual_total / 12)) if sub_annual_total else 0,
+                "annual_total_yen": int(sub_annual_total),
+                "monthly_totals": sub_monthly_totals,
+                "pie": _to_pie_items(sub_pie_totals),
+            },
+        }
+
+    recurring_cost_summary = _build_recurring_cost_summary()
 
     def _account_active_on(acc: Account, d: date) -> bool:
         start_d = getattr(acc, "effective_start_date", None)
@@ -650,6 +763,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "free_this": free_this,
             "free_next": free_next,
             "free_next2": free_next2,
+            "recurring_cost_summary": recurring_cost_summary,
             "this_range": (this_first, this_last),
             "next_range": (next_first, next_last),
             "next2_range": (next2_first, next2_last),
@@ -679,7 +793,7 @@ def api_list_subscriptions(db: Session = Depends(get_db)):
     return crud.list_subscriptions(db)
 
 
-# 逕ｻ髱｢繝輔か繝ｼ繝: 霑ｽ蜉
+# 鬨ｾ蛹・ｽｽ・ｻ鬯ｮ・ｱ繝ｻ・｢驛｢譎・ｽｼ譁青ｰ驛｢譎｢・ｽ・ｼ驛｢譎｢・｣・ｰ: 鬮ｴ謇假ｽｽ・ｽ髯ｷ莨夲ｽ｣・ｰ
 @app.post("/subscriptions")
 def create_subscription(
     name: str = Form(...),
@@ -741,7 +855,7 @@ def create_subscription(
     return RedirectResponse(url="/", status_code=303)
 
 
-# 逕ｻ髱｢繝輔か繝ｼ繝: 蜑企勁
+# 鬨ｾ蛹・ｽｽ・ｻ鬯ｮ・ｱ繝ｻ・｢驛｢譎・ｽｼ譁青ｰ驛｢譎｢・ｽ・ｼ驛｢譎｢・｣・ｰ: 髯ｷ蜿ｰ・ｼ竏晄ｱ・
 @app.post("/subscriptions/{sub_id}/update")
 def update_subscription(
     sub_id: int,
@@ -833,7 +947,7 @@ def add_account(
     return RedirectResponse(url="/", status_code=303)
 
 
-# plans逋ｻ骭ｲ
+# plans鬨ｾ蜈ｷ・ｽ・ｻ鬯ｪ・ｭ繝ｻ・ｲ
 @app.post("/plans")
 def add_plan(
     type: str = Form(...),            # "income" or "subscription"
@@ -1133,7 +1247,7 @@ def api_card_merchant_pie(
     if len(pairs) > top_n:
         head = pairs[: top_n - 1]
         tail_total = sum(v for _, v in pairs[top_n - 1 :])
-        pairs = head + [("\u305d\u306e\u4ed6", tail_total)]
+        pairs = head + [("その他", tail_total)]
 
     items = []
     for label, value in pairs:
@@ -1616,6 +1730,69 @@ async def import_oneoff_csv(
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/oneoff/import-text")
+def import_oneoff_text(
+    text: str = Form(...),
+    account_id: int = Form(...),
+    default_direction: str = Form("auto"),  # auto / expense / income
+    db: Session = Depends(get_db),
+):
+    account = db.query(Account).filter(Account.id == int(account_id)).one_or_none()
+    if account is None:
+        raise HTTPException(status_code=400, detail="account not found")
+
+    mode = str(default_direction or "auto").strip().lower()
+    if mode not in ("auto", "expense", "income"):
+        raise HTTPException(status_code=400, detail="default_direction must be auto/expense/income")
+
+    rows, warnings, errors = parse_card_text_preview(text or "")
+    if errors:
+        raise HTTPException(status_code=400, detail=f"oneoff text parse error: {' | '.join(errors[:5])}")
+    if not rows:
+        raise HTTPException(status_code=400, detail="no rows parsed from text")
+
+    created = 0
+    for i, row in enumerate(rows, start=1):
+        try:
+            ev_date = parse_flexible_date(str(row.get("date", "")))
+            title = normalize_title(str(row.get("title", "")))
+            raw_price = int(row.get("price", 0))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"row {i} parse error: {e}")
+
+        base = abs(raw_price)
+        if mode == "expense":
+            signed_amount = -base
+        elif mode == "income":
+            signed_amount = base
+        else:
+            # Auto mode: positive text amount as expense, negative text amount as income.
+            signed_amount = base if raw_price < 0 else -base
+
+        db.add(
+            CashflowEvent(
+                user_id=1,
+                date=ev_date,
+                account_id=int(account_id),
+                amount_yen=signed_amount,
+                plan_id=None,
+                description=title,
+                source="oneoff",
+                status="expected",
+            )
+        )
+        created += 1
+
+    if created > 0:
+        db.commit()
+
+    # Keep warnings observable in server logs; import still succeeds.
+    if warnings:
+        print(f"[oneoff/import-text] warnings: {warnings}")
+
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.post("/oneoff/{event_id}/update")
 def update_oneoff(
     event_id: int,
@@ -1679,13 +1856,13 @@ def create_transfer(
     to_account_id: int = Form(...),
     amount_yen: int = Form(...),
     method: str = Form(...),  # "bank" / "debit" / "card"
-    description: str = Form("チャージ"),
+    description: str = Form("郢昶・ﾎ慕ｹ晢ｽｼ郢ｧ・ｸ"),
     card_id: int | None = Form(None),
 ):
     amt = abs(int(amount_yen))
     tid = str(uuid4())
 
-    # to側は必ず +（残高が増える）
+    # to陋幢ｽｴ邵ｺ・ｯ陟｢繝ｻ笘・+繝ｻ蝓滂ｽｮ遏ｩ・ｫ蛟･窶ｲ陟・干竏ｴ郢ｧ蜈ｷ・ｼ繝ｻ
     ev_to = CashflowEvent(
         user_id=1,
         date=date_,
@@ -1700,7 +1877,7 @@ def create_transfer(
     db.add(ev_to)
 
     if method in ("bank", "debit"):
-        # from側は同日に -（残高から減る）
+        # from陋幢ｽｴ邵ｺ・ｯ陷ｷ譴ｧ蠕狗ｸｺ・ｫ -繝ｻ蝓滂ｽｮ遏ｩ・ｫ蛟･ﾂｰ郢ｧ逕ｻ・ｸ蟶呻ｽ九・繝ｻ
         ev_from = CashflowEvent(
             user_id=1,
             date=date_,
@@ -1817,4 +1994,5 @@ def api_forecast_free(db: Session = Depends(get_db)):
 
     series = forecast_free_daily(db, user_id=1, start=this_first, end=end)
     return {"series": series}
+
 

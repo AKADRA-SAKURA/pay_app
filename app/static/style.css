@@ -769,6 +769,32 @@ tbody tr:last-child td {
   height: 220px;
 }
 
+.recurring-cost-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.recurring-cost-item {
+  min-width: 0;
+}
+
+.recurring-kpi-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.recurring-kpi {
+  font-size: 13px;
+}
+
+.recurring-pie-wrap {
+  height: 240px;
+}
+
 .merchant-pie-controls {
   display: flex;
   flex-wrap: wrap;
@@ -925,6 +951,9 @@ tbody tr:last-child td {
 
 @media (max-width: 640px) {
   .pie-grid {
+    grid-template-columns: 1fr;
+  }
+  .recurring-cost-grid {
     grid-template-columns: 1fr;
   }
   .merchant-pie-controls {
