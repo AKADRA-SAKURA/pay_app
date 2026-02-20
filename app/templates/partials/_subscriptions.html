@@ -1,4 +1,4 @@
-<!-- サブスク登録（オーバーレイ） -->
+﻿<!-- サブスク登録（オーバーレイ） -->
 
 <div id="subscription-form-template" class="overlay-form-template">
   <div class="card">
@@ -25,7 +25,7 @@
         <select name="freq" required>
           <option value="monthly">毎月</option>
           <option value="yearly">毎年</option>
-          <option value="monthly_interval">nヶ月ごと</option>
+          <option value="monthly_interval">nか月ごと</option>
           <option value="weekly_interval">n週間ごと</option>
         </select>
       </label>
@@ -41,16 +41,26 @@
       </label>
 
       <label>
-        月（年1回/基準月 1-12）
+        対象月（毎年のみ 1-12）
         <input name="billing_month" type="number" min="1" max="12" value="1" />
       </label>
 
       <label>
         支払い方法
         <select name="payment_method" required>
-          <option value="bank">口座引落</option>
-          <option value="card">カード</option>
+          <option value="bank">口座払い</option>
+          <option value="card">カード払い</option>
         </select>
+      </label>
+
+      <label>
+        有効開始日
+        <input name="effective_start_date" type="date" required />
+      </label>
+
+      <label>
+        有効終了日（任意）
+        <input name="effective_end_date" type="date" />
       </label>
 
       <label>
@@ -79,7 +89,7 @@
       </div>
 
       <div class="hint" style="grid-column: 1 / -1">
-        ※ yearly は月を使用。monthly_interval は間隔(月)を使用。weekly_interval は間隔(週)を使用します。
+        ※ 開始日は必須です。終了日が空の場合は無期限で適用されます。
       </div>
     </form>
   </div>
@@ -103,10 +113,12 @@
           <th style="width: 140px">金額</th>
           <th style="width: 120px">請求日</th>
           <th style="width: 120px">頻度</th>
-          <th style="width: 120px">月</th>
+          <th style="width: 120px">対象月</th>
           <th style="width: 120px">間隔(月)</th>
           <th style="width: 120px">間隔(週)</th>
           <th style="width: 140px">支払い方法</th>
+          <th style="width: 150px">有効開始日</th>
+          <th style="width: 170px">有効終了日</th>
           <th style="width: 200px">口座/カード</th>
         </tr>
       </thead>
@@ -138,7 +150,7 @@
             <select class="edit-input" name="freq" form="sub-{{ s.id }}" required>
               <option value="monthly" {% if s.freq == "monthly" %}selected{% endif %}>毎月</option>
               <option value="yearly" {% if s.freq == "yearly" %}selected{% endif %}>毎年</option>
-              <option value="monthly_interval" {% if s.freq == "monthly_interval" %}selected{% endif %}>nヶ月ごと</option>
+              <option value="monthly_interval" {% if s.freq == "monthly_interval" %}selected{% endif %}>nか月ごと</option>
               <option value="weekly_interval" {% if s.freq == "weekly_interval" %}selected{% endif %}>n週間ごと</option>
             </select>
           </td>
@@ -153,9 +165,15 @@
           </td>
           <td>
             <select class="edit-input" name="payment_method" form="sub-{{ s.id }}" required>
-              <option value="bank" {% if s.payment_method == "bank" %}selected{% endif %}>口座引落</option>
-              <option value="card" {% if s.payment_method == "card" %}selected{% endif %}>カード</option>
+              <option value="bank" {% if s.payment_method == "bank" %}selected{% endif %}>口座払い</option>
+              <option value="card" {% if s.payment_method == "card" %}selected{% endif %}>カード払い</option>
             </select>
+          </td>
+          <td>
+            <input class="edit-input" name="effective_start_date" type="date" value="{{ s.effective_start_date.isoformat() if s.effective_start_date else '' }}" form="sub-{{ s.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="effective_end_date" type="date" value="{{ s.effective_end_date.isoformat() if s.effective_end_date else '' }}" form="sub-{{ s.id }}" />
           </td>
           <td>
             <select class="edit-input" name="account_id" form="sub-{{ s.id }}">
@@ -176,7 +194,7 @@
 
         {% if not subs %}
         <tr>
-          <td colspan="11" class="empty">サブスクがありません。1件追加してください。</td>
+          <td colspan="13" class="empty">サブスクがありません。追加してください。</td>
         </tr>
         {% endif %}
       </tbody>

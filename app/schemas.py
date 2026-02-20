@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 
@@ -12,6 +14,8 @@ class SubscriptionCreate(BaseModel):
     payment_method: str = Field(default="bank")
     account_id: int | None = None
     card_id: int | None = None
+    effective_start_date: date
+    effective_end_date: date | None = None
 
 
 class SubscriptionOut(BaseModel):
@@ -26,6 +30,8 @@ class SubscriptionOut(BaseModel):
     payment_method: str
     account_id: int | None = None
     card_id: int | None = None
+    effective_start_date: date
+    effective_end_date: date | None = None
 
     class Config:
         from_attributes = True

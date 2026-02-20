@@ -80,3 +80,19 @@ Ran 18 tests in 0.150s
 OK
 ```
 - 判定: 合格
+
+## 9. 実施記録（2026-02-18 / 有効期間拡張）
+- 追加観点:
+  口座・カード・サブスクの有効期間（開始日必須 / 終了日NULL可）と、サブスク終了後のイベント非計上
+- 追加テスト:
+  `tests/test_subscription_effective_dates.py`
+- 実行コマンド:
+```powershell
+.\.venv\Scripts\python.exe -m unittest tests/test_000_api_integration.py tests/test_statement_import.py tests/test_scheduler_subscription.py tests/test_effective_dates.py tests/test_subscription_effective_dates.py
+```
+- 実行結果:
+```text
+Ran 20 tests in 0.124s
+OK
+```
+- 判定: 合格
