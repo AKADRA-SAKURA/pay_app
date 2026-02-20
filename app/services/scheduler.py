@@ -239,12 +239,16 @@ def build_month_subscription_events(db: Session, user_id: int, month_first: date
             continue
         if not getattr(s, "account_id", None):
             continue
+        sub_start = getattr(s, "effective_start_date", None)
+        sub_end = getattr(s, "effective_end_date", None)
 
         amount = -abs(int(getattr(s, "amount_yen", 0) or 0))
         if amount == 0:
             continue
 
         for d in _subscription_occurrences_in_range(s, month_first, month_last):
+            if not _is_within_effective(d, sub_start, sub_end):
+                continue
             created.append(
                 CashflowEvent(
                     user_id=user_id,
@@ -396,11 +400,18 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
             .all()
         )
         for s in subs:
+            sub_start = getattr(s, "effective_start_date", None)
+            sub_end = getattr(s, "effective_end_date", None)
             amount = abs(int(getattr(s, "amount_yen", 0) or 0))
             if amount <= 0:
                 continue
             occurrences = _subscription_occurrences_in_range(s, period_start, period_end)
-            valid_count = sum(1 for d in occurrences if _is_within_effective(d, card_start, card_end))
+            valid_count = sum(
+                1
+                for d in occurrences
+                if _is_within_effective(d, card_start, card_end)
+                and _is_within_effective(d, sub_start, sub_end)
+            )
             total += amount * valid_count
 
         # cardごとのリボ支払い

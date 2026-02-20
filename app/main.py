@@ -50,6 +50,8 @@ from app.services.statement_import import (
     normalize_title,
 )
 
+DEFAULT_EFFECTIVE_START_DATE = date(1998, 1, 31)
+
 # create tables at startup (local/dev only)
 Base.metadata.create_all(bind=engine)
 
@@ -89,6 +91,15 @@ def _ensure_subscription_columns() -> None:
             conn.execute(text("ALTER TABLE subscriptions ADD COLUMN account_id INTEGER"))
         if "card_id" not in cols:
             conn.execute(text("ALTER TABLE subscriptions ADD COLUMN card_id INTEGER"))
+        if "effective_start_date" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN effective_start_date DATE"))
+        if "effective_end_date" not in cols:
+            conn.execute(text("ALTER TABLE subscriptions ADD COLUMN effective_end_date DATE"))
+        conn.execute(
+            text("UPDATE subscriptions SET effective_start_date = :d WHERE effective_start_date IS NULL"),
+            {"d": DEFAULT_EFFECTIVE_START_DATE.isoformat()},
+        )
+        conn.commit()
 
 _ensure_subscription_columns()
 
@@ -102,12 +113,21 @@ def _ensure_account_card_columns() -> None:
             conn.execute(text("ALTER TABLE accounts ADD COLUMN effective_start_date DATE"))
         if "effective_end_date" not in acc_cols:
             conn.execute(text("ALTER TABLE accounts ADD COLUMN effective_end_date DATE"))
+        conn.execute(
+            text("UPDATE accounts SET effective_start_date = :d WHERE effective_start_date IS NULL"),
+            {"d": DEFAULT_EFFECTIVE_START_DATE.isoformat()},
+        )
 
         card_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(cards)")).fetchall()]
         if "effective_start_date" not in card_cols:
             conn.execute(text("ALTER TABLE cards ADD COLUMN effective_start_date DATE"))
         if "effective_end_date" not in card_cols:
             conn.execute(text("ALTER TABLE cards ADD COLUMN effective_end_date DATE"))
+        conn.execute(
+            text("UPDATE cards SET effective_start_date = :d WHERE effective_start_date IS NULL"),
+            {"d": DEFAULT_EFFECTIVE_START_DATE.isoformat()},
+        )
+        conn.commit()
 
 
 _ensure_account_card_columns()
@@ -534,7 +554,15 @@ def page_index(request: Request, db: Session = Depends(get_db)):
                 amount = abs(int(getattr(s, "amount_yen", 0) or 0))
                 if amount <= 0:
                     continue
-                occ_count = len(_subscription_occurrences_in_range(s, month_first, month_last))
+                sub_start = getattr(s, "effective_start_date", None)
+                sub_end = getattr(s, "effective_end_date", None)
+                occ_count = 0
+                for occ in _subscription_occurrences_in_range(s, month_first, month_last):
+                    if sub_start and occ < sub_start:
+                        continue
+                    if sub_end and occ > sub_end:
+                        continue
+                    occ_count += 1
                 if occ_count <= 0:
                     continue
                 val = amount * occ_count
@@ -806,6 +834,8 @@ def create_subscription(
     payment_method: str = Form("bank"),
     account_id: str | None = Form(None),
     card_id: str | None = Form(None),
+    effective_start_date: str = Form(...),
+    effective_end_date: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     def _to_int(v: str | None) -> int | None:
@@ -839,6 +869,10 @@ def create_subscription(
     elif payment_method == "card":
         account_i = None
 
+    start_d = _parse_required_date(effective_start_date, "effective_start_date")
+    end_d = _parse_optional_date(effective_end_date, "effective_end_date")
+    _ensure_effective_range(start_d, end_d, "subscription")
+
     data = SubscriptionCreate(
         name=name,
         amount_yen=amount_yen,
@@ -850,6 +884,8 @@ def create_subscription(
         payment_method=payment_method,
         account_id=account_i,
         card_id=card_i,
+        effective_start_date=start_d,
+        effective_end_date=end_d,
     )
     crud.create_subscription(db, data)
     return RedirectResponse(url="/", status_code=303)
@@ -869,6 +905,8 @@ def update_subscription(
     payment_method: str = Form("bank"),
     account_id: str | None = Form(None),
     card_id: str | None = Form(None),
+    effective_start_date: str = Form(...),
+    effective_end_date: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     def _to_int(v: str | None) -> int | None:
@@ -901,6 +939,10 @@ def update_subscription(
         card_i = None
     elif payment_method == "card":
         account_i = None
+
+    start_d = _parse_required_date(effective_start_date, "effective_start_date")
+    end_d = _parse_optional_date(effective_end_date, "effective_end_date")
+    _ensure_effective_range(start_d, end_d, "subscription")
     sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
     if sub:
         sub.name = name
@@ -913,6 +955,8 @@ def update_subscription(
         sub.payment_method = payment_method
         sub.account_id = int(account_i) if account_i is not None else None
         sub.card_id = int(card_i) if card_i is not None else None
+        sub.effective_start_date = start_d
+        sub.effective_end_date = end_d
         db.commit()
     return RedirectResponse(url="/", status_code=303)
 

@@ -22,6 +22,8 @@ def create_subscription(db: Session, data: SubscriptionCreate) -> Subscription:
         payment_method=data.payment_method,
         account_id=data.account_id,
         card_id=data.card_id,
+        effective_start_date=data.effective_start_date,
+        effective_end_date=data.effective_end_date,
     )
     db.add(sub)
     db.commit()
