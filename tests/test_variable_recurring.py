@@ -8,6 +8,7 @@ from app.db import Base
 from app.models import (
     Account,
     Card,
+    CardTransaction,
     VariableRecurringPayment,
     VariableRecurringConfirmation,
 )
@@ -122,6 +123,45 @@ class VariableRecurringTests(unittest.TestCase):
         events2 = build_card_withdraw_events(self.db, user_id=1, withdraw_y=2026, withdraw_m=2)
         self.assertEqual(len(events2), 1)
         self.assertEqual(int(events2[0].amount_yen), -4300)
+
+    def test_card_withdraw_is_skipped_after_card_effective_end_date(self) -> None:
+        self.db.add(
+            Account(
+                id=1,
+                name="Bank",
+                kind="bank",
+                balance_yen=100000,
+                user_id=1,
+                effective_start_date=date(2026, 1, 1),
+                effective_end_date=None,
+            )
+        )
+        self.db.add(
+            Card(
+                name="EPOS",
+                closing_day=15,
+                payment_day=27,
+                payment_account_id=1,
+                effective_start_date=date(2020, 1, 1),
+                effective_end_date=date(2026, 2, 21),
+            )
+        )
+        self.db.commit()
+
+        # This transaction belongs to Feb withdraw period (Jan16-Feb15),
+        # but withdraw date is 2026-02-27 > effective_end_date, so it must be skipped.
+        self.db.add(
+            CardTransaction(
+                card_id=1,
+                date=date(2026, 2, 10),
+                amount_yen=1200,
+                merchant="Store",
+            )
+        )
+        self.db.commit()
+
+        events = build_card_withdraw_events(self.db, user_id=1, withdraw_y=2026, withdraw_m=2)
+        self.assertEqual(events, [])
 
 
 if __name__ == "__main__":

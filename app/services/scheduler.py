@@ -407,6 +407,13 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
         period_start, period_end, withdraw_date = card_period_for_withdraw_month(card, withdraw_y, withdraw_m)
         card_start = getattr(card, "effective_start_date", None)
         card_end = getattr(card, "effective_end_date", None)
+        if not _is_within_effective(withdraw_date, card_start, card_end):
+            # If card is inactive on withdraw date, it must not be counted in future events.
+            db.query(CardStatement).filter(
+                CardStatement.card_id == card.id,
+                CardStatement.withdraw_date == withdraw_date,
+            ).delete(synchronize_session=False)
+            continue
         valid_period = _clip_range_to_effective(period_start, period_end, card_start, card_end)
         has_valid_period = valid_period is not None
         valid_start, valid_end = valid_period if valid_period is not None else (period_start, period_end)

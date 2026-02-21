@@ -1647,6 +1647,7 @@ def create_card(
     )
     db.add(c)
     db.commit()
+    rebuild_events_scheduler(db, user_id=1)
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -1674,6 +1675,7 @@ def update_card(
         c.effective_start_date = start_d
         c.effective_end_date = end_d
         db.commit()
+        rebuild_events_scheduler(db, user_id=1)
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -1681,6 +1683,7 @@ def update_card(
 def delete_card(card_id: int, db: Session = Depends(get_db)):
     db.query(Card).filter(Card.id == card_id).delete(synchronize_session=False)
     db.commit()
+    rebuild_events_scheduler(db, user_id=1)
     return RedirectResponse(url="/", status_code=303)
 
 
