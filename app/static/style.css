@@ -89,6 +89,21 @@ h1 {
   box-shadow: inset 4px 0 0 var(--danger);
 }
 
+.row-inactive td {
+  background: #f3f4f6;
+  color: #9aa3ad;
+}
+
+.row-inactive .sticky-col {
+  background: #f3f4f6;
+}
+
+.warn-icon {
+  color: #b91c1c;
+  font-weight: 700;
+  cursor: help;
+}
+
 /* “危険”セルをチップっぽく */
 .danger-chip {
   display: inline-flex;

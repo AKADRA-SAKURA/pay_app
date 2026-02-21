@@ -125,7 +125,8 @@
 
       <tbody>
         {% for s in subs %}
-        <tr data-edit-row>
+        {% set inactive = s.effective_end_date and s.effective_end_date <= today %}
+        <tr data-edit-row class="{% if inactive %}row-inactive{% endif %}">
           <td class="edit-actions sticky-col">
             <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
             <form id="sub-{{ s.id }}" method="post" action="/subscriptions/{{ s.id }}/update" style="margin:0; display:inline;">

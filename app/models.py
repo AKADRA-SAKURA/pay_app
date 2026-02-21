@@ -23,6 +23,62 @@ class Subscription(Base):
     effective_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
+class VariableRecurringPayment(Base):
+    __tablename__ = "variable_recurring_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    estimated_amount_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    billing_day: Mapped[int] = mapped_column(Integer, nullable=False)
+    freq: Mapped[str] = mapped_column(String(30), nullable=False, default="monthly")
+    interval_months: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    interval_weeks: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    billing_month: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    payment_method: Mapped[str] = mapped_column(String(20), nullable=False, default="bank")
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    card_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    effective_start_date: Mapped[date] = mapped_column(Date, nullable=False, default=date(1998, 1, 31))
+    effective_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    confirmations = relationship(
+        "VariableRecurringConfirmation",
+        back_populates="variable_payment",
+        cascade="all, delete-orphan",
+    )
+
+
+class VariableRecurringConfirmation(Base):
+    __tablename__ = "variable_recurring_confirmations"
+    __table_args__ = (
+        UniqueConstraint(
+            "variable_payment_id",
+            "occurrence_date",
+            name="uq_variable_recurring_occurrence",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    variable_payment_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("variable_recurring_payments.id"),
+        nullable=False,
+    )
+    occurrence_date: Mapped[date] = mapped_column(Date, nullable=False)
+    confirmed_amount_yen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    variable_payment = relationship(
+        "VariableRecurringPayment",
+        back_populates="confirmations",
+    )
+
+
 class Account(Base):
     __tablename__ = "accounts"
 

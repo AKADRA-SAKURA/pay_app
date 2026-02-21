@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel, Field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import calendar
 import re
 import csv
@@ -32,6 +32,8 @@ from .models import (
     CardTransaction,
     CashflowEvent,
     Subscription,
+    VariableRecurringPayment,
+    VariableRecurringConfirmation,
     Plan,
     CardRevolving,
     CardInstallment,
@@ -428,6 +430,11 @@ def page_index(request: Request, db: Session = Depends(get_db)):
     subs = crud.list_subscriptions(db)
     accounts = crud.list_accounts(db)
     plans = crud.list_plans(db)
+    variable_payments = (
+        db.query(VariableRecurringPayment)
+        .order_by(VariableRecurringPayment.billing_day.asc(), VariableRecurringPayment.id.asc())
+        .all()
+    )
 
     today = date.today()
     this_first, this_last = month_range(today)
@@ -595,6 +602,62 @@ def page_index(request: Request, db: Session = Depends(get_db)):
         }
 
     recurring_cost_summary = _build_recurring_cost_summary()
+
+    confirmations_by_payment: dict[int, list[VariableRecurringConfirmation]] = defaultdict(list)
+    confirmation_dates_by_payment: dict[int, set[date]] = defaultdict(set)
+    confirmation_rows = (
+        db.query(VariableRecurringConfirmation)
+        .order_by(
+            VariableRecurringConfirmation.occurrence_date.desc(),
+            VariableRecurringConfirmation.id.desc(),
+        )
+        .all()
+    )
+    for c in confirmation_rows:
+        payment_id = int(c.variable_payment_id)
+        confirmations_by_payment[payment_id].append(c)
+        confirmation_dates_by_payment[payment_id].add(c.occurrence_date)
+
+    yesterday = today - timedelta(days=1)
+    future_limit = today + timedelta(days=365)
+    for item in variable_payments:
+        payment_id = int(item.id)
+        start_d = getattr(item, "effective_start_date", None) or today
+        end_d = getattr(item, "effective_end_date", None)
+        known_dates = confirmation_dates_by_payment.get(payment_id, set())
+
+        missing_dates: list[date] = []
+        check_end = yesterday if end_d is None else min(yesterday, end_d)
+        if start_d <= check_end:
+            for occ in _subscription_occurrences_in_range(item, start_d, check_end):
+                if start_d and occ < start_d:
+                    continue
+                if end_d and occ > end_d:
+                    continue
+                if occ not in known_dates:
+                    missing_dates.append(occ)
+
+        recent = confirmations_by_payment.get(payment_id, [])
+        latest = recent[0] if recent else None
+
+        default_confirm_date = missing_dates[0] if missing_dates else None
+        if default_confirm_date is None:
+            for occ in _subscription_occurrences_in_range(item, today, future_limit):
+                if start_d and occ < start_d:
+                    continue
+                if end_d and occ > end_d:
+                    continue
+                default_confirm_date = occ
+                break
+        if default_confirm_date is None:
+            default_confirm_date = start_d if start_d > today else today
+
+        item._missing_confirm_count = len(missing_dates)
+        item._oldest_missing_date = missing_dates[0] if missing_dates else None
+        item._latest_confirmed_date = latest.occurrence_date if latest else None
+        item._latest_confirmed_amount_yen = int(latest.confirmed_amount_yen) if latest else None
+        item._default_confirm_date = default_confirm_date
+        item._recent_confirmations = recent[:3]
 
     def _account_active_on(acc: Account, d: date) -> bool:
         start_d = getattr(acc, "effective_start_date", None)
@@ -791,6 +854,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "subs": subs,
             "accounts": accounts,
             "plans": plans,
+            "variable_payments": variable_payments,
             "events_this": events_this,
             "events_next": events_next,
             "free_this": free_this,
@@ -817,6 +881,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "total_min_balance": total_min_balance,
             "total_min_date": total_min_date,
             "total_is_danger": total_is_danger,
+            "today": today,
         },
     )
 
@@ -970,6 +1035,211 @@ def update_subscription(
 @app.post("/subscriptions/{sub_id}/delete")
 def delete_subscription(sub_id: int, db: Session = Depends(get_db)):
     crud.delete_subscription(db, sub_id)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/variable-recurring")
+def create_variable_recurring(
+    name: str = Form(...),
+    estimated_amount_yen: int = Form(...),
+    billing_day: int = Form(...),
+    freq: str = Form("monthly"),
+    interval_months: str | None = Form(None),
+    interval_weeks: str | None = Form(None),
+    billing_month: str | None = Form(None),
+    payment_method: str = Form("bank"),
+    account_id: str | None = Form(None),
+    card_id: str | None = Form(None),
+    effective_start_date: str = Form(...),
+    effective_end_date: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    def _to_int(v: str | None) -> int | None:
+        try:
+            return int(v) if v not in (None, "") else None
+        except Exception:
+            return None
+
+    interval_i = _to_int(interval_months) or 1
+    interval_w = _to_int(interval_weeks) or 1
+    month_i = _to_int(billing_month) or 1
+    account_i = _to_int(account_id)
+    card_i = _to_int(card_id)
+
+    if freq == "monthly":
+        interval_i = 1
+        interval_w = 1
+        month_i = 1
+    elif freq == "yearly":
+        interval_i = 1
+        interval_w = 1
+    elif freq == "monthly_interval":
+        interval_w = 1
+        month_i = 1
+    elif freq == "weekly_interval":
+        interval_i = 1
+        month_i = 1
+
+    if payment_method == "bank":
+        if not account_i:
+            raise HTTPException(status_code=400, detail="account_id is required")
+        card_i = None
+    elif payment_method == "card":
+        if not card_i:
+            raise HTTPException(status_code=400, detail="card_id is required for card payment")
+        account_i = None
+    else:
+        raise HTTPException(status_code=400, detail="payment_method must be bank/card")
+
+    start_d = _parse_required_date(effective_start_date, "effective_start_date")
+    end_d = _parse_optional_date(effective_end_date, "effective_end_date")
+    _ensure_effective_range(start_d, end_d, "variable recurring payment")
+
+    item = VariableRecurringPayment(
+        name=name,
+        estimated_amount_yen=abs(int(estimated_amount_yen or 0)),
+        billing_day=int(billing_day),
+        freq=freq,
+        interval_months=int(interval_i),
+        interval_weeks=int(interval_w),
+        billing_month=int(month_i),
+        payment_method=payment_method,
+        account_id=int(account_i) if account_i is not None else None,
+        card_id=int(card_i) if card_i is not None else None,
+        effective_start_date=start_d,
+        effective_end_date=end_d,
+    )
+    db.add(item)
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/variable-recurring/{payment_id}/update")
+def update_variable_recurring(
+    payment_id: int,
+    name: str = Form(...),
+    estimated_amount_yen: int = Form(...),
+    billing_day: int = Form(...),
+    freq: str = Form("monthly"),
+    interval_months: str | None = Form(None),
+    interval_weeks: str | None = Form(None),
+    billing_month: str | None = Form(None),
+    payment_method: str = Form("bank"),
+    account_id: str | None = Form(None),
+    card_id: str | None = Form(None),
+    effective_start_date: str = Form(...),
+    effective_end_date: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    def _to_int(v: str | None) -> int | None:
+        try:
+            return int(v) if v not in (None, "") else None
+        except Exception:
+            return None
+
+    interval_i = _to_int(interval_months) or 1
+    interval_w = _to_int(interval_weeks) or 1
+    month_i = _to_int(billing_month) or 1
+    account_i = _to_int(account_id)
+    card_i = _to_int(card_id)
+
+    if freq == "monthly":
+        interval_i = 1
+        interval_w = 1
+        month_i = 1
+    elif freq == "yearly":
+        interval_i = 1
+        interval_w = 1
+    elif freq == "monthly_interval":
+        interval_w = 1
+        month_i = 1
+    elif freq == "weekly_interval":
+        interval_i = 1
+        month_i = 1
+
+    if payment_method == "bank":
+        if not account_i:
+            raise HTTPException(status_code=400, detail="account_id is required")
+        card_i = None
+    elif payment_method == "card":
+        if not card_i:
+            raise HTTPException(status_code=400, detail="card_id is required for card payment")
+        account_i = None
+    else:
+        raise HTTPException(status_code=400, detail="payment_method must be bank/card")
+
+    start_d = _parse_required_date(effective_start_date, "effective_start_date")
+    end_d = _parse_optional_date(effective_end_date, "effective_end_date")
+    _ensure_effective_range(start_d, end_d, "variable recurring payment")
+
+    item = db.query(VariableRecurringPayment).filter(VariableRecurringPayment.id == int(payment_id)).first()
+    if item:
+        item.name = name
+        item.estimated_amount_yen = abs(int(estimated_amount_yen or 0))
+        item.billing_day = int(billing_day)
+        item.freq = freq
+        item.interval_months = int(interval_i)
+        item.interval_weeks = int(interval_w)
+        item.billing_month = int(month_i)
+        item.payment_method = payment_method
+        item.account_id = int(account_i) if account_i is not None else None
+        item.card_id = int(card_i) if card_i is not None else None
+        item.effective_start_date = start_d
+        item.effective_end_date = end_d
+        db.commit()
+        rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/variable-recurring/{payment_id}/delete")
+def delete_variable_recurring(payment_id: int, db: Session = Depends(get_db)):
+    db.query(VariableRecurringPayment).filter(VariableRecurringPayment.id == int(payment_id)).delete(
+        synchronize_session=False
+    )
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/variable-recurring/{payment_id}/confirm")
+def confirm_variable_recurring(
+    payment_id: int,
+    occurrence_date: str = Form(...),
+    confirmed_amount_yen: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    item = db.query(VariableRecurringPayment).filter(VariableRecurringPayment.id == int(payment_id)).first()
+    if item is None:
+        raise HTTPException(status_code=404, detail="variable recurring payment not found")
+
+    occ_date = _parse_required_date(occurrence_date, "occurrence_date")
+    start_d = getattr(item, "effective_start_date", None)
+    end_d = getattr(item, "effective_end_date", None)
+    if start_d and occ_date < start_d:
+        raise HTTPException(status_code=400, detail="occurrence_date is before effective_start_date")
+    if end_d and occ_date > end_d:
+        raise HTTPException(status_code=400, detail="occurrence_date is after effective_end_date")
+
+    amount_abs = abs(int(confirmed_amount_yen or 0))
+    row = (
+        db.query(VariableRecurringConfirmation)
+        .filter(VariableRecurringConfirmation.variable_payment_id == int(payment_id))
+        .filter(VariableRecurringConfirmation.occurrence_date == occ_date)
+        .first()
+    )
+    if row:
+        row.confirmed_amount_yen = amount_abs
+    else:
+        db.add(
+            VariableRecurringConfirmation(
+                variable_payment_id=int(payment_id),
+                occurrence_date=occ_date,
+                confirmed_amount_yen=amount_abs,
+            )
+        )
+    db.commit()
+    rebuild_events_scheduler(db, user_id=1)
     return RedirectResponse(url="/", status_code=303)
 
 

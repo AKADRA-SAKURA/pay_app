@@ -78,7 +78,8 @@
       </thead>
       <tbody>
         {% for c in cards %}
-        <tr data-edit-row>
+        {% set inactive = c.effective_end_date and c.effective_end_date <= today %}
+        <tr data-edit-row class="{% if inactive %}row-inactive{% endif %}">
           <td class="edit-actions sticky-col">
             <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
             <form id="card-{{ c.id }}" method="post" action="/cards/{{ c.id }}/update" style="margin:0; display:inline;">

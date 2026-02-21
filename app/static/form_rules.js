@@ -158,11 +158,13 @@
   function init() {
     document.querySelectorAll('form[action="/plans"]').forEach((form) => bind(form, 'plan'));
     document.querySelectorAll('form[action="/subscriptions"]').forEach((form) => bind(form, 'sub'));
+    document.querySelectorAll('form[action="/variable-recurring"]').forEach((form) => bind(form, 'sub'));
     document.querySelectorAll('form[action="/transfer"]').forEach((form) => bindTransfer(form));
 
     document.querySelectorAll('tr[data-edit-row]').forEach((row) => {
       if (row.querySelector('form[id^="plan-"]')) bind(row, 'plan');
       if (row.querySelector('form[id^="sub-"]')) bind(row, 'sub');
+      if (row.querySelector('form[id^="vrp-"]')) bind(row, 'sub');
     });
   }
 
