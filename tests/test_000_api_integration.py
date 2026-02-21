@@ -135,6 +135,68 @@ class ApiIntegrationTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_monthly_report_api_and_pdf(self) -> None:
+        account_id = self._seed_account()
+        card_id, month_first = self._seed_card_with_transaction(account_id)
+        db = self.Session()
+        try:
+            db.add(
+                CashflowEvent(
+                    user_id=1,
+                    date=month_first,
+                    account_id=account_id,
+                    amount_yen=3000,
+                    plan_id=None,
+                    description="月次収入テスト",
+                    source="oneoff",
+                    status="expected",
+                )
+            )
+            db.add(
+                CashflowEvent(
+                    user_id=1,
+                    date=month_first,
+                    account_id=account_id,
+                    amount_yen=-800,
+                    plan_id=None,
+                    description="月次支出テスト",
+                    source="oneoff",
+                    status="expected",
+                )
+            )
+            db.add(
+                CardTransaction(
+                    card_id=card_id,
+                    date=month_first,
+                    amount_yen=1200,
+                    merchant="Report Target",
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        month = month_first.strftime("%Y-%m")
+
+        report_res = self.client.get("/api/reports/monthly", params={"month": month})
+        self.assertEqual(report_res.status_code, 200)
+        report_json = report_res.json()
+        self.assertEqual(str(report_json.get("month")), month)
+        self.assertGreaterEqual(int(report_json.get("total_yen", 0)), 1200)
+        self.assertGreaterEqual(int(report_json.get("row_count", 0)), 1)
+        self.assertIsInstance(report_json.get("rows", []), list)
+        self.assertIsInstance(report_json.get("expense_store_pie_items", []), list)
+        self.assertIsInstance(report_json.get("method_pie_items", []), list)
+        self.assertIsInstance(report_json.get("method_store_pies", []), list)
+        self.assertIn("free_money_yen", report_json)
+        self.assertGreater(int(report_json.get("income_total_yen", 0)), 0)
+        self.assertGreater(int(report_json.get("expense_total_yen", 0)), 0)
+
+        pdf_res = self.client.get("/reports/monthly/pdf", params={"month": month})
+        self.assertEqual(pdf_res.status_code, 200)
+        self.assertEqual(pdf_res.headers.get("content-type"), "application/pdf")
+        self.assertTrue(pdf_res.content.startswith(b"%PDF-1.4"))
+
 
 if __name__ == "__main__":
     unittest.main()

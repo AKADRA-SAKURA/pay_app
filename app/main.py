@@ -4,7 +4,7 @@ load_dotenv()
 from uuid import uuid4
 from fastapi import FastAPI, Depends, Request, Form, HTTPException, Query, UploadFile, File
 from sqlalchemy import text
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
@@ -48,6 +48,11 @@ from app.services.statement_import import (
     build_import_key,
     parse_flexible_date,
     normalize_title,
+)
+from app.services.monthly_report import (
+    parse_report_month,
+    build_monthly_payment_report,
+    render_monthly_report_pdf,
 )
 
 DEFAULT_EFFECTIVE_START_DATE = date(1998, 1, 31)
@@ -805,6 +810,7 @@ def page_index(request: Request, db: Session = Depends(get_db)):
             "transfers": transfers,
             "card_charges": card_charges,
             "card_merchant_default_month": today.strftime("%Y-%m"),
+            "monthly_report_default_month": today.strftime("%Y-%m"),
             "pay_pie_this": pay_pie_this,
             "pay_pie_next": pay_pie_next,
             "advice": get_today_advice(db, user_id=1),
@@ -1200,6 +1206,38 @@ def api_forecast_accounts(
 
     return forecast_by_account_events(
         db, user_id=1, start=this_first, end=next_last, danger_threshold_yen=danger_threshold_yen
+    )
+
+
+@app.get("/api/reports/monthly")
+def api_monthly_report(
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+):
+    try:
+        month_first = parse_report_month(month)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return build_monthly_payment_report(db, user_id=1, month_first=month_first)
+
+
+@app.get("/reports/monthly/pdf")
+def download_monthly_report_pdf(
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+):
+    try:
+        month_first = parse_report_month(month)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    report = build_monthly_payment_report(db, user_id=1, month_first=month_first)
+    pdf_bytes = render_monthly_report_pdf(report)
+    filename = f"monthly_report_{month_first.strftime('%Y-%m')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
