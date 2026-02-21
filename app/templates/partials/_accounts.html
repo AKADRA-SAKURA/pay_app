@@ -66,7 +66,8 @@
       </thead>
       <tbody>
         {% for a in accounts %}
-        <tr data-edit-row>
+        {% set inactive = a.effective_end_date and a.effective_end_date <= today %}
+        <tr data-edit-row class="{% if inactive %}row-inactive{% endif %}">
           <td class="edit-actions sticky-col">
             <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
             <form id="acc-{{ a.id }}" method="post" action="/accounts/{{ a.id }}/update" style="margin:0; display:inline;">

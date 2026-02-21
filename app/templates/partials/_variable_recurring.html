@@ -1,0 +1,232 @@
+<!-- 変動定期支払い -->
+
+<div id="variable-recurring-form-template" class="overlay-form-template">
+  <div class="card">
+    <h2>変動定期支払い登録 <span class="pill">見込み額 + 月次確定</span></h2>
+
+    <form method="post" action="/variable-recurring" class="form">
+      <label class="col-span-all">
+        名称
+        <input name="name" placeholder="ガス代" required />
+      </label>
+
+      <label>
+        見込み金額（円）
+        <input name="estimated_amount_yen" type="number" min="0" value="0" required />
+      </label>
+
+      <label>
+        請求日（1-31）
+        <input name="billing_day" type="number" min="1" max="31" value="1" required />
+      </label>
+
+      <label>
+        頻度
+        <select name="freq" required>
+          <option value="monthly">毎月</option>
+          <option value="yearly">毎年</option>
+          <option value="monthly_interval">nか月ごと</option>
+          <option value="weekly_interval">n週間ごと</option>
+        </select>
+      </label>
+
+      <label>
+        間隔（月）
+        <input name="interval_months" type="number" min="1" value="1" />
+      </label>
+
+      <label>
+        間隔（週）
+        <input name="interval_weeks" type="number" min="1" value="1" />
+      </label>
+
+      <label>
+        対象月（毎年のみ 1-12）
+        <input name="billing_month" type="number" min="1" max="12" value="1" />
+      </label>
+
+      <label>
+        支払い方法
+        <select name="payment_method" required>
+          <option value="bank">口座払い</option>
+          <option value="card">カード払い</option>
+        </select>
+      </label>
+
+      <label>
+        有効開始日
+        <input name="effective_start_date" type="date" required />
+      </label>
+
+      <label>
+        有効終了日（任意）
+        <input name="effective_end_date" type="date" />
+      </label>
+
+      <label>
+        口座（bank のとき）
+        <select name="account_id">
+          <option value="">-</option>
+          {% for a in accounts %}
+            <option value="{{ a.id }}">{{ a.name }} (ID:{{ a.id }})</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        カード（card のとき）
+        <select name="card_id">
+          <option value="">-</option>
+          {% for c in cards %}
+            <option value="{{ c.id }}">{{ c.name }} (ID:{{ c.id }})</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div class="actions col-span-all">
+        <button class="btn" type="submit">追加する</button>
+        <button class="btn btn-ghost" type="reset">クリア</button>
+      </div>
+
+      <div class="hint" style="grid-column: 1 / -1">
+        ※ 見込み金額は予測に使用されます。月次確定入力で同じ日付の確定値がある場合は確定値を優先します。
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>変動定期支払い一覧</h2>
+    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="variable-recurring-form-template">＋ 追加</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col" style="width: 140px">操作</th>
+          <th style="width: 70px">ID</th>
+          <th>名称</th>
+          <th style="width: 140px">見込み金額</th>
+          <th style="width: 120px">請求日</th>
+          <th style="width: 120px">頻度</th>
+          <th style="width: 120px">対象月</th>
+          <th style="width: 120px">間隔(月)</th>
+          <th style="width: 120px">間隔(週)</th>
+          <th style="width: 140px">支払い方法</th>
+          <th style="width: 150px">有効開始日</th>
+          <th style="width: 170px">有効終了日</th>
+          <th style="width: 220px">口座/カード</th>
+          <th style="width: 100px">未確定</th>
+          <th style="width: 280px">月次確定入力</th>
+          <th style="width: 280px">直近確定値</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for v in variable_payments %}
+        {% set inactive = v.effective_end_date and v.effective_end_date <= today %}
+        <tr data-edit-row class="{% if inactive %}row-inactive{% endif %}">
+          <td class="edit-actions sticky-col">
+            <button class="btn btn-ghost edit-btn" type="button" data-edit="start">編集</button>
+            <form id="vrp-{{ v.id }}" method="post" action="/variable-recurring/{{ v.id }}/update" style="margin:0; display:inline;">
+              <button class="btn save-btn" type="submit">保存</button>
+            </form>
+            <button class="btn btn-ghost cancel-btn" type="button" data-edit="cancel">キャンセル</button>
+            <form method="post" action="/variable-recurring/{{ v.id }}/delete" style="margin:0; display:inline;">
+              <button class="btn btn-danger" type="submit">削除</button>
+            </form>
+          </td>
+          <td>{{ v.id }}</td>
+          <td>
+            <input class="edit-input" name="name" value="{{ v.name }}" form="vrp-{{ v.id }}" required />
+          </td>
+          <td class="money">
+            <input class="edit-input" name="estimated_amount_yen" type="number" min="0" value="{{ v.estimated_amount_yen }}" form="vrp-{{ v.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="billing_day" type="number" min="1" max="31" value="{{ v.billing_day }}" form="vrp-{{ v.id }}" required />
+          </td>
+          <td>
+            <select class="edit-input" name="freq" form="vrp-{{ v.id }}" required>
+              <option value="monthly" {% if v.freq == "monthly" %}selected{% endif %}>毎月</option>
+              <option value="yearly" {% if v.freq == "yearly" %}selected{% endif %}>毎年</option>
+              <option value="monthly_interval" {% if v.freq == "monthly_interval" %}selected{% endif %}>nか月ごと</option>
+              <option value="weekly_interval" {% if v.freq == "weekly_interval" %}selected{% endif %}>n週間ごと</option>
+            </select>
+          </td>
+          <td>
+            <input class="edit-input" name="billing_month" type="number" min="1" max="12" value="{{ v.billing_month }}" form="vrp-{{ v.id }}" />
+          </td>
+          <td>
+            <input class="edit-input" name="interval_months" type="number" min="1" value="{{ v.interval_months }}" form="vrp-{{ v.id }}" />
+          </td>
+          <td>
+            <input class="edit-input" name="interval_weeks" type="number" min="1" value="{{ v.interval_weeks or 1 }}" form="vrp-{{ v.id }}" />
+          </td>
+          <td>
+            <select class="edit-input" name="payment_method" form="vrp-{{ v.id }}" required>
+              <option value="bank" {% if v.payment_method == "bank" %}selected{% endif %}>口座払い</option>
+              <option value="card" {% if v.payment_method == "card" %}selected{% endif %}>カード払い</option>
+            </select>
+          </td>
+          <td>
+            <input class="edit-input" name="effective_start_date" type="date" value="{{ v.effective_start_date.isoformat() if v.effective_start_date else '' }}" form="vrp-{{ v.id }}" required />
+          </td>
+          <td>
+            <input class="edit-input" name="effective_end_date" type="date" value="{{ v.effective_end_date.isoformat() if v.effective_end_date else '' }}" form="vrp-{{ v.id }}" />
+          </td>
+          <td>
+            <select class="edit-input" name="account_id" form="vrp-{{ v.id }}">
+              <option value="">-</option>
+              {% for a in accounts %}
+                <option value="{{ a.id }}" {% if a.id == v.account_id %}selected{% endif %}>{{ a.name }} (ID:{{ a.id }})</option>
+              {% endfor %}
+            </select>
+            <select class="edit-input" name="card_id" form="vrp-{{ v.id }}">
+              <option value="">-</option>
+              {% for c in cards %}
+                <option value="{{ c.id }}" {% if c.id == v.card_id %}selected{% endif %}>{{ c.name }} (ID:{{ c.id }})</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td style="text-align:center;">
+            {% if v._missing_confirm_count %}
+              <span class="warn-icon" title="今日以前の確定値が未入力です">⚠ {{ v._missing_confirm_count }}</span>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="/variable-recurring/{{ v.id }}/confirm" class="inline-form" style="display:flex; gap:6px; align-items:center;">
+              <input name="occurrence_date" type="date" value="{{ v._default_confirm_date.isoformat() if v._default_confirm_date else '' }}" required style="max-width: 132px;" />
+              <input name="confirmed_amount_yen" type="number" min="0" value="{{ v._latest_confirmed_amount_yen if v._latest_confirmed_amount_yen is not none else v.estimated_amount_yen }}" required style="max-width: 110px;" />
+              <button class="btn btn-ghost" type="submit">確定</button>
+            </form>
+          </td>
+          <td>
+            {% if v._recent_confirmations %}
+              {% for c in v._recent_confirmations %}
+                <div>{{ c.occurrence_date }}: {{ "{:,}".format(c.confirmed_amount_yen) }} 円</div>
+              {% endfor %}
+            {% else %}
+              <span class="hint">未入力</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if not variable_payments %}
+        <tr>
+          <td colspan="16" class="empty">変動定期支払いがありません。追加してください。</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="hint mt-10">
+    ※ 予定日が今日より前で確定値未入力の項目は ⚠ を表示します（ホバーで詳細表示）。
+  </div>
+</div>

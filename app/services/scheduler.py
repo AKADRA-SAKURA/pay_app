@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.models import (
     Plan,
     Subscription,
+    VariableRecurringPayment,
+    VariableRecurringConfirmation,
     CashflowEvent,
     Card,
     CardTransaction,
@@ -88,6 +90,18 @@ def _installment_due_for_month(item: CardInstallment, month_first: date) -> int:
     base = total // months
     remainder = total % months
     return base + (1 if offset < remainder else 0)
+
+
+def _occurrence_amount_yen(
+    default_amount_yen: int,
+    confirmations_by_key: dict[tuple[int, date], int],
+    payment_id: int,
+    occurrence_date: date,
+) -> int:
+    confirmed = confirmations_by_key.get((int(payment_id), occurrence_date))
+    if confirmed is not None:
+        return abs(int(confirmed))
+    return abs(int(default_amount_yen or 0))
 
 
 def occurs_monthly_interval(start: date, target_month_first: date, interval_months: int) -> bool:
@@ -265,6 +279,62 @@ def build_month_subscription_events(db: Session, user_id: int, month_first: date
     return created
 
 
+def build_month_variable_recurring_events(db: Session, user_id: int, month_first: date) -> list[CashflowEvent]:
+    y, m = month_first.year, month_first.month
+    month_last = date(y, m, calendar.monthrange(y, m)[1])
+
+    items = (
+        db.query(VariableRecurringPayment)
+        .filter(VariableRecurringPayment.payment_method == "bank")
+        .filter(VariableRecurringPayment.account_id.isnot(None))
+        .all()
+    )
+    item_ids = [int(i.id) for i in items]
+    confirmations_by_key: dict[tuple[int, date], int] = {}
+    if item_ids:
+        conf_rows = (
+            db.query(VariableRecurringConfirmation)
+            .filter(VariableRecurringConfirmation.variable_payment_id.in_(item_ids))
+            .filter(VariableRecurringConfirmation.occurrence_date >= month_first)
+            .filter(VariableRecurringConfirmation.occurrence_date <= month_last)
+            .all()
+        )
+        for c in conf_rows:
+            confirmations_by_key[(int(c.variable_payment_id), c.occurrence_date)] = int(c.confirmed_amount_yen or 0)
+
+    created: list[CashflowEvent] = []
+    for item in items:
+        item_start = getattr(item, "effective_start_date", None)
+        item_end = getattr(item, "effective_end_date", None)
+
+        for d in _subscription_occurrences_in_range(item, month_first, month_last):
+            if not _is_within_effective(d, item_start, item_end):
+                continue
+            amount_abs = _occurrence_amount_yen(
+                int(getattr(item, "estimated_amount_yen", 0) or 0),
+                confirmations_by_key,
+                int(item.id),
+                d,
+            )
+            if amount_abs <= 0:
+                continue
+
+            created.append(
+                CashflowEvent(
+                    user_id=user_id,
+                    plan_id=None,
+                    account_id=int(item.account_id),
+                    date=d,
+                    amount_yen=-abs(amount_abs),
+                    description=f"変動定期: {getattr(item, 'name', '-')}",
+                    source="plan",
+                    status="expected",
+                )
+            )
+
+    return created
+
+
 def rebuild_events(db: Session, user_id: int) -> None:
     """今月＋来月のイベントを作り直す（イベントだけを消して作る）"""
     today = date.today()
@@ -288,6 +358,9 @@ def rebuild_events(db: Session, user_id: int) -> None:
     events += build_month_subscription_events(db, user_id, this_first)
     events += build_month_subscription_events(db, user_id, next_first)
     events += build_month_subscription_events(db, user_id, next2_first)
+    events += build_month_variable_recurring_events(db, user_id, this_first)
+    events += build_month_variable_recurring_events(db, user_id, next_first)
+    events += build_month_variable_recurring_events(db, user_id, next2_first)
 
     # ★ 追記：カード引落（今月・来月・再来月の引落分）
     events += build_card_withdraw_events(db, user_id, this_first.year, this_first.month)
@@ -413,6 +486,42 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
                 and _is_within_effective(d, sub_start, sub_end)
             )
             total += amount * valid_count
+
+        # variable recurring (payment_method=card) もカード引落に加算
+        variable_items = (
+            db.query(VariableRecurringPayment)
+            .filter(VariableRecurringPayment.payment_method == "card")
+            .filter(VariableRecurringPayment.card_id == card.id)
+            .all()
+        )
+        variable_ids = [int(v.id) for v in variable_items]
+        variable_confirmations_by_key: dict[tuple[int, date], int] = {}
+        if variable_ids:
+            variable_conf_rows = (
+                db.query(VariableRecurringConfirmation)
+                .filter(VariableRecurringConfirmation.variable_payment_id.in_(variable_ids))
+                .filter(VariableRecurringConfirmation.occurrence_date >= period_start)
+                .filter(VariableRecurringConfirmation.occurrence_date <= period_end)
+                .all()
+            )
+            for c in variable_conf_rows:
+                variable_confirmations_by_key[(int(c.variable_payment_id), c.occurrence_date)] = int(c.confirmed_amount_yen or 0)
+
+        for item in variable_items:
+            item_start = getattr(item, "effective_start_date", None)
+            item_end = getattr(item, "effective_end_date", None)
+            occurrences = _subscription_occurrences_in_range(item, period_start, period_end)
+            for d in occurrences:
+                if not _is_within_effective(d, card_start, card_end):
+                    continue
+                if not _is_within_effective(d, item_start, item_end):
+                    continue
+                total += _occurrence_amount_yen(
+                    int(getattr(item, "estimated_amount_yen", 0) or 0),
+                    variable_confirmations_by_key,
+                    int(item.id),
+                    d,
+                )
 
         # cardごとのリボ支払い
         revolvings = (
