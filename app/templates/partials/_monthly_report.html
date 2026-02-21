@@ -1,0 +1,61 @@
+﻿<div id="monthly-report-form-template" class="overlay-form-template">
+  <div class="card" id="monthly-report-panel">
+    <h2>月次明細レポート <span class="pill">preview + pdf</span></h2>
+
+    <div class="form">
+      <label>
+        対象月
+        <input id="monthly-report-month" type="month" value="{{ monthly_report_default_month }}" required />
+      </label>
+
+      <div class="actions col-span-all">
+        <button id="monthly-report-preview-btn" class="btn" type="button">プレビュー</button>
+        <a id="monthly-report-download-link" class="btn btn-ghost" href="#" download hidden>PDFダウンロード</a>
+      </div>
+    </div>
+
+    <div id="monthly-report-preview" class="mt-12" hidden>
+      <section class="card" style="margin-bottom:12px;">
+        <h3 style="margin:0 0 8px;">この月に自由に使えるお金</h3>
+        <div id="monthly-report-free-money" class="hint"></div>
+      </section>
+
+      <section class="card" style="margin-bottom:12px;">
+        <h3 style="margin:0 0 8px;">円グラフ一式</h3>
+        <div class="chart-wrap pie-wrap" style="max-width:460px; margin:8px auto 12px;">
+          <canvas id="monthly-report-store-pie" aria-label="店舗割合 円グラフ" role="img"></canvas>
+        </div>
+        <div class="chart-wrap pie-wrap" style="max-width:460px; margin:8px auto 12px;">
+          <canvas id="monthly-report-method-pie" aria-label="支払い方法割合 円グラフ" role="img"></canvas>
+        </div>
+        <div id="monthly-report-method-store-pies"></div>
+      </section>
+
+      <section class="card table-wrap">
+        <h3 style="margin:0 0 8px;">具体的なリスト</h3>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 120px;">日付</th>
+              <th style="width: 120px;">種別</th>
+              <th style="width: 130px;">支払方法</th>
+              <th>内容</th>
+              <th style="width: 140px;">金額</th>
+            </tr>
+          </thead>
+          <tbody id="monthly-report-table-body"></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>月次明細レポート</h2>
+    <button class="btn btn-ghost btn-plus" type="button" data-overlay-open="monthly-report-form-template">＋ 作成</button>
+  </div>
+  <div class="hint">
+    ※ 指定月の決済・収入イベントを分析し、プレビュー確認後にPDFをダウンロードできます。
+  </div>
+</div>

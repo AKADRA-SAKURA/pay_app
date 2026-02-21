@@ -96,3 +96,37 @@ Ran 20 tests in 0.124s
 OK
 ```
 - 判定: 合格
+
+## 10. 実施記録（2026-02-18 / 月次明細レポート追加）
+- 追加機能:
+  `月次明細レポート` の API / プレビュー / PDFダウンロード
+- 追加観点:
+  1. `GET /api/reports/monthly?month=YYYY-MM` の集計結果
+  2. `GET /reports/monthly/pdf?month=YYYY-MM` のPDF生成
+  3. 既存API回帰（forecast / merchant-pie / oneoff import）
+- 実行コマンド:
+```powershell
+.\.venv\Scripts\python.exe -m unittest tests/test_000_api_integration.py tests/test_statement_import.py tests/test_scheduler_subscription.py tests/test_effective_dates.py tests/test_subscription_effective_dates.py
+```
+- 実行結果:
+```text
+Ran 21 tests in 0.148s
+OK
+```
+- 判定: 合格
+
+## 11. 実施記録（2026-02-18 / 月次明細レポート拡張）
+- 追加機能:
+  1. この月に自由に使えるお金（開始残高 + 月間収支）
+  2. 一覧に収入イベントを含める
+  3. 支払い方法別店舗割合円グラフ
+- 実行コマンド:
+```powershell
+.\.venv\Scripts\python.exe -m unittest tests/test_000_api_integration.py tests/test_statement_import.py tests/test_scheduler_subscription.py tests/test_effective_dates.py tests/test_subscription_effective_dates.py
+```
+- 実行結果:
+```text
+Ran 21 tests in 0.166s
+OK
+```
+- 判定: 合格
