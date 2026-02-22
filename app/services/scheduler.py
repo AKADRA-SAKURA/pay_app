@@ -217,6 +217,9 @@ def build_month_events(db: Session, user_id: int, month_first: date) -> list[Cas
             ev_date,
             cashflow_type="income" if p.type == "income" else "expense",
         )
+        # 開始日より前の発生日は作らない
+        if ev_date < p_start:
+            continue
         # 終了日がある場合はそれ以降を作らない
         if p.end_date and ev_date > p.end_date:
             continue
@@ -440,6 +443,9 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
 
         def _plan_occurs_in_range(p: Plan, start: date, end: date) -> list[date]:
             dates: list[date] = []
+            p_start = p.start_date or date.today()
+            if p_start > end:
+                return dates
             cur_first = date(start.year, start.month, 1)
             while cur_first <= end:
                 should = False
@@ -448,7 +454,7 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
                 elif p.freq == "yearly":
                     should = (p.month == cur_first.month)
                 elif p.freq == "monthly_interval":
-                    should = occurs_monthly_interval(p.start_date or date.today(), cur_first, p.interval_months or 1)
+                    should = occurs_monthly_interval(p_start, cur_first, p.interval_months or 1)
                 if should:
                     desired = p.day or 1
                     ev_date = resolve_day_in_month(cur_first.year, cur_first.month, desired)
@@ -456,7 +462,9 @@ def build_card_withdraw_events(db: Session, user_id: int, withdraw_y: int, withd
                         ev_date,
                         cashflow_type="income" if p.type == "income" else "expense",
                     )
-                    if p.end_date and ev_date > p.end_date:
+                    if ev_date < p_start:
+                        pass
+                    elif p.end_date and ev_date > p.end_date:
                         pass
                     elif start <= ev_date <= end:
                         dates.append(ev_date)
